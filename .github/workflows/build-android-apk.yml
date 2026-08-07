@@ -1,0 +1,53 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android-dashboard/**'
+      - '.github/workflows/build-android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-dashboard
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+          cache-provider: basic
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-dashboard-debug-apk
+          path: android-dashboard/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
