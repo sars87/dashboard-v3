@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pull the latest dashboard source from sars87/dashboard-v2 GitHub repository and deploy it.
+set -Eeuo pipefail
+
+REPO_URL="git@github.com:sars87/dashboard-v2.git"
+REPO_DIR="/home/saif/deployments/dashboard-v2"
+APP_FILE="dashboard.py"
+
+echo "==> Pulling latest changes from sars87/dashboard-v2..."
+if [[ ! -d "$REPO_DIR/.git" ]]; then
+    mkdir -p "$(dirname "$REPO_DIR")"
+    git clone "$REPO_URL" "$REPO_DIR"
+else
+    git -C "$REPO_DIR" pull --ff-only
+fi
+
+SOURCE_PATH="$REPO_DIR/$APP_FILE"
+if [[ ! -f "$SOURCE_PATH" ]]; then
+    echo "Error: Missing dashboard source: $SOURCE_PATH" >&2
+    exit 1
+fi
+
+echo "==> Verifying Python syntax of dashboard.py..."
+python3 -B -c "import pathlib; compile(pathlib.Path('$SOURCE_PATH').read_text(), '$APP_FILE', 'exec')"
+
+TARGET_PATH="/home/saif/dashboard.py"
+if [[ -f "$TARGET_PATH" ]]; then
+    BACKUP_PATH="${TARGET_PATH}.backup.$(date +%Y%m%d-%H%M%S)"
+    echo "==> Creating backup at $BACKUP_PATH..."
+    sudo cp "$TARGET_PATH" "$BACKUP_PATH"
+fi
+
+echo "==> Installing updated dashboard to $TARGET_PATH..."
+sudo install -o saif -g saif -m 0644 "$SOURCE_PATH" "$TARGET_PATH"
+
+echo "==> Restarting dashboard service..."
+sudo systemctl restart dashboard.service
+sudo systemctl is-active --quiet dashboard.service
+
+echo "==> Deployment of dashboard-v2 complete successfully!"
