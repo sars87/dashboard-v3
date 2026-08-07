@@ -375,6 +375,8 @@ HTML = '''
 <!DOCTYPE html>
 <html lang="ar" dir="ltr">
 <head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{version}}</title>
@@ -1974,6 +1976,7 @@ HTML = '''
         }
         setInterval(pollNet, 1500); pollNet();
     </script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
 '''
