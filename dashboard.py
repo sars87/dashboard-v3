@@ -187,10 +187,14 @@ def explain_cron_schedule(sched):
     elif s == "0 * * * *":
         return "Every hour (كل ساعة)"
     elif s == "0 0 * * *":
-        return "Every day at midnight (كل يوم منتصف الليل)"
+        return "Every day at 00:00 (كل يوم في منتصف الليل)"
+    elif s == "30 3 * * *":
+        return "Every day at 03:30 AM (كل يوم الساعة 3:30 فجراً)"
+    elif s == "0 13 * * 0-4":
+        return "Sunday to Thursday at 01:00 PM (من الأحد إلى الخميس الساعة 1:00 ظهراً)"
     elif s == "0 0 * * 0":
-        return "Every week on Sunday (كل أسبوع يوم الأحد)"
-    return f"Custom schedule: {s}"
+        return "Every week on Sunday at midnight (كل أسبوع يوم الأحد منتصف الليل)"
+    return f"Custom schedule: {s} (توقيت مخصص)"
 
 def cron_jobs():
     jobs = []
