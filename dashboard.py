@@ -1892,7 +1892,7 @@ HTML = '''
                             </tr>
                         </thead>
                         <tbody id="cron_table_body">
-                            {% for j in cronjobs[:5] %}
+                            {% for j in cronjobs %}
                             <tr class="cron-row" data-active="{{ 'true' if j.active else 'false' }}">
                                 <td class="t" style="font-weight:700;color:var(--primary-light);">{{j.user}}</td>
                                 <td>
@@ -1905,7 +1905,7 @@ HTML = '''
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; align-items:center;">
-                                        <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
+                                        <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" onclick="saveScroll()" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
                                             {{ 'Disable' if j.active else 'Enable' }}
                                         </a>
                                         <button onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
@@ -1929,7 +1929,7 @@ HTML = '''
             <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:480px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
                 <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Edit Cron Schedule (تعديل توقيت المهمة)</h3>
                 <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">اختر توقيت جاهز أو اكتب صيغة Cron مخصصة (مثال: <code>*/5 * * * *</code> تعني التنفيذ كل 5 دقائق).</p>
-                <form method="POST" action="/action/cron_edit">
+                <form method="POST" action="/action/cron_edit" onsubmit="saveScroll()">
                     <input type="hidden" name="user" id="edit_user">
                     <input type="hidden" name="line_idx" id="edit_line_idx">
                     
@@ -1957,6 +1957,17 @@ HTML = '''
         </div>
 
         <script>
+            function saveScroll() {
+                sessionStorage.setItem('scrollpos', window.scrollY);
+            }
+            document.addEventListener("DOMContentLoaded", function() {
+                const scrollpos = sessionStorage.getItem('scrollpos');
+                if (scrollpos) {
+                    window.scrollTo(0, parseInt(scrollpos));
+                    sessionStorage.removeItem('scrollpos');
+                }
+            });
+
             function openCronEdit(user, lineIdx, sched) {
                 document.getElementById('edit_user').value = user;
                 document.getElementById('edit_line_idx').value = lineIdx;
