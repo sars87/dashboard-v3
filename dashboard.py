@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v1.7"
+VERSION = "Dashboard v1.8"
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -177,6 +177,38 @@ def battery():
 
 def reboot_info():
     return sh("who -b | awk '{print $3\" \"$4}'")
+
+def disk_info():
+    try:
+        out = sh("df / | tail -1")
+        parts = out.split()
+        if len(parts) >= 5:
+            used_pct = int(parts[4].replace('%', ''))
+            total = parts[1]
+            used = parts[2]
+            free = parts[3]
+            return {"percent": used_pct, "total": total, "used": used, "free": free}
+    except:
+        pass
+    return {"percent": 0, "total": "0", "used": "0", "free": "0"}
+
+def docker_containers():
+    containers = []
+    try:
+        raw = sh("docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.State}}' 2>/dev/null")
+        for line in raw.splitlines():
+            parts = line.split('|')
+            if len(parts) >= 5:
+                containers.append({
+                    "id": parts[0],
+                    "name": parts[1],
+                    "image": parts[2],
+                    "status": parts[3],
+                    "state": parts[4].lower()
+                })
+    except:
+        pass
+    return containers
 
 def explain_cron_schedule(sched):
     s = sched.strip()
