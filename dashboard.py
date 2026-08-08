@@ -234,18 +234,18 @@ def cron_jobs():
                 else:
                     long_desc = f"Executes command: {cmd}"
 
-                    jobs.append({
-                        "id": f"{user}_{idx}",
-                        "user": user,
-                        "line_idx": idx,
-                        "schedule": sched,
-                        "schedule_desc": explain_cron_schedule(sched),
-                        "command": cmd,
-                        "description": desc,
-                        "long_description": long_desc,
-                        "active": cron_svc_status and not is_disabled,
-                        "raw": orig_line
-                    })
+                jobs.append({
+                    "id": f"{user}_{idx}",
+                    "user": user,
+                    "line_idx": idx,
+                    "schedule": sched,
+                    "schedule_desc": explain_cron_schedule(sched),
+                    "command": cmd,
+                    "description": desc,
+                    "long_description": long_desc,
+                    "active": cron_svc_status and not is_disabled,
+                    "raw": orig_line
+                })
     except:
         pass
     return jobs
