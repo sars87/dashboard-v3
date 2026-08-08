@@ -180,21 +180,70 @@ def reboot_info():
 
 def explain_cron_schedule(sched):
     s = sched.strip()
-    if s == "*/5 * * * *":
-        return "Every 5 minutes (كل 5 دقائق)"
-    elif s == "*/10 * * * *":
-        return "Every 10 minutes (كل 10 دقائق)"
-    elif s == "0 * * * *":
-        return "Every hour (كل ساعة)"
-    elif s == "0 0 * * *":
-        return "Every day at 00:00 (كل يوم في منتصف الليل)"
-    elif s == "30 3 * * *":
-        return "Every day at 03:30 AM (كل يوم الساعة 3:30 فجراً)"
-    elif s == "0 13 * * 0-4":
-        return "Sunday to Thursday at 01:00 PM (من الأحد إلى الخميس الساعة 1:00 ظهراً)"
-    elif s == "0 0 * * 0":
-        return "Every week on Sunday at midnight (كل أسبوع يوم الأحد منتصف الليل)"
-    return f"Custom schedule: {s} (توقيت مخصص)"
+    parts = s.split()
+    if len(parts) != 5:
+        return f"Custom schedule: {s} (توقيت مخصص)"
+    
+    m, h, dom, mon, dow = parts
+    
+    dow_map = {
+        "0": "Sunday (الأحد)", "1": "Monday (الإثنين)", "2": "Tuesday (الثلاثاء)",
+        "3": "Wednesday (الأربعاء)", "4": "Thursday (الخميس)", "5": "Friday (الجمعة)",
+        "6": "Saturday (السبت)", "7": "Sunday (الأحد)"
+    }
+    
+    # Parse Days of Week
+    dow_desc = "Every day (كل يوم)"
+    if dow != "*":
+        if dow in ["0-4", "1-5"]:
+            if dow == "0-4":
+                dow_desc = "Sunday to Thursday (من الأحد إلى الخميس - أيام الدوام)"
+            else:
+                dow_desc = "Monday to Friday (من الإثنين إلى الجمعة)"
+        elif "-" in dow:
+            p = dow.split("-")
+            start = dow_map.get(p[0], p[0])
+            end = dow_map.get(p[1], p[1])
+            dow_desc = f"From {start} to {end} (من {start} إلى {end})"
+        elif "," in dow:
+            days = [dow_map.get(d.strip(), d.strip()) for d in dow.split(",")]
+            dow_desc = f"On days: {', '.join(days)} (في أيام: {', '.join(days)})"
+        else:
+            d_name = dow_map.get(dow, dow)
+            dow_desc = f"Every week on {d_name} (كل أسبوع يوم {d_name})"
+
+    # Parse Time (Hour & Minute)
+    time_desc = ""
+    if h == "*" and m == "*":
+        time_desc = "Every minute (كل دقيقة)"
+    elif h == "*":
+        if m.startswith("*/"):
+            val = m.split("/")[1]
+            time_desc = f"Every {val} minutes of every hour (كل {val} دقائق من كل ساعة)"
+        else:
+            time_desc = f"At minute {m} of every hour (في الدقيقة {m} من كل ساعة)"
+    else:
+        # Specific hour(s)
+        if h.isdigit() and m.isdigit():
+            hr = int(h)
+            mn = int(m)
+            am_pm = "AM (صباحاً)" if hr < 12 else "PM (مساءً)"
+            hr12 = hr if hr <= 12 else hr - 12
+            if hr12 == 0: hr12 = 12
+            time_desc = f"At {hr12:02d}:{mn:02d} {am_pm} (الساعة {hr:02d}:{mn:02d} بنظام 24 ساعة)"
+        elif m.startswith("*/"):
+            val = m.split("/")[1]
+            time_desc = f"Every {val} minutes at hour {h} (كل {val} دقائق في الساعة {h})"
+        else:
+            time_desc = f"At hour {h}, minute {m} (في الساعة {h} والدقيقة {m})"
+
+    if dom != "*":
+        return f"{time_desc}, on day {dom} of the month (في اليوم {dom} من الشهر)"
+    
+    if dow == "*":
+        return f"{time_desc}, Daily (بشكل يومي)"
+    else:
+        return f"{time_desc}, {dow_desc}"
 
 def cron_jobs():
     jobs = []
