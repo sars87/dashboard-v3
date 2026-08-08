@@ -33,15 +33,18 @@ fi
 echo "==> Installing updated dashboard to $TARGET_PATH..."
 sudo install -o saif -g saif -m 0644 "$SOURCE_PATH" "$TARGET_PATH"
 
-echo "==> Installing battery alert script..."
+echo "==> Installing alert and watchdog scripts..."
 sudo install -o saif -g saif -m 0755 "$REPO_DIR/battery_alert.py" /usr/local/bin/battery_alert.py
+sudo install -o saif -g saif -m 0755 "$REPO_DIR/disk_alert.py" /usr/local/bin/disk_alert.py
+sudo install -o saif -g saif -m 0755 "$REPO_DIR/server_watchdog.py" /usr/local/bin/server_watchdog.py
 
-# Setup cron job to run battery check every 5 minutes if not already present
-CRON_JOB="*/5 * * * * /usr/local/bin/battery_alert.py >/dev/null 2>&1"
-(crontab -u saif -l 2>/dev/null | grep -Fv "battery_alert.py"; echo "$CRON_JOB") | crontab -u saif -
+# Setup cron jobs
+CRON_JOB_BAT="*/5 * * * * /usr/local/bin/battery_alert.py >/dev/null 2>&1"
+CRON_JOB_DSK="*/10 * * * * /usr/local/bin/disk_alert.py >/dev/null 2>&1"
+(crontab -u saif -l 2>/dev/null | grep -Fv "battery_alert.py" | grep -Fv "disk_alert.py"; echo "$CRON_JOB_BAT"; echo "$CRON_JOB_DSK") | crontab -u saif -
 
-echo "==> Restarting dashboard service..."
+echo "==> Restarting dashboard service and watchdog..."
 sudo systemctl restart dashboard.service
 sudo systemctl is-active --quiet dashboard.service
 
-echo "==> Deployment of dashboard-v2 (v1.6) with battery alerts completed successfully!"
+echo "==> Deployment of Dashboard v1.9 completed successfully!"

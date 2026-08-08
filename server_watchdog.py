@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+import os, time, subprocess, urllib.request, json
+
+TELEGRAM_TOKEN_FILE = "/home/saif/.telegram_token"
+TELEGRAM_CHAT_FILE = "/home/saif/.telegram_chat"
+
+def send_telegram(msg):
+    try:
+        if os.path.exists(TELEGRAM_TOKEN_FILE) and os.path.exists(TELEGRAM_CHAT_FILE):
+            token = open(TELEGRAM_TOKEN_FILE).read().strip()
+            chat_id = open(TELEGRAM_CHAT_FILE).read().strip()
+            if token and chat_id:
+                data = json.dumps({'chat_id': chat_id, 'text': msg}).encode()
+                req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data, headers={'Content-Type': 'application/json'})
+                urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("Telegram error:", e)
+
+def check_services():
+    # Watchdog: check critical services (dashboard, tailscale) and restart if down
+    services = ["dashboard.service", "tailscaled.service"]
+    for svc in services:
+        status = subprocess.run(f"systemctl is-active {svc}", shell=True, capture_output=True, text=True).stdout.strip()
+        if status != "active":
+            print(f"Service {svc} is down! Restarting...")
+            subprocess.run(f"sudo systemctl restart {svc}", shell=True)
+            send_telegram(f"⚠️ Watchdog Alert: Service {svc} went down and was automatically restarted!")
+
+def poll_telegram_bot():
+    try:
+        if not (os.path.exists(TELEGRAM_TOKEN_FILE) and os.path.exists(TELEGRAM_CHAT_FILE)):
+            return
+        token = open(TELEGRAM_TOKEN_FILE).read().strip()
+        offset_file = "/tmp/telegram_bot_offset.txt"
+        offset = 0
+        if os.path.exists(offset_file):
+            offset = int(open(offset_file).read().strip() or 0)
+        
+        url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=2"
+        req = urllib.request.urlopen(url, timeout=5)
+        res = json.loads(req.read().decode())
+        if res.get("ok"):
+            for update in res.get("result", []):
+                new_offset = update["update_id"] + 1
+                open(offset_file, 'w').write(str(new_offset))
+                
+                msg = update.get("message", {})
+                text = msg.get("text", "").strip()
+                chat_id = str(msg.get("chat", {}).get("id", ""))
+                
+                if text.startswith("/"):
+                    cmd = text.split()[0].lower()
+                    response = "Unknown command. Available: /status, /speedtest, /reboot, /pihole_pause"
+                    if cmd == "/status":
+                        cpu = subprocess.run("top -bn1 | grep 'Cpu(s)' | awk '{print 15 - $8}'", shell=True, capture_output=True, text=True).stdout.strip() or "N/A"
+                        ram = subprocess.run("free | grep Mem | awk '{print $3/$2 * 100.0}'", shell=True, capture_output=True, text=True).stdout.strip()
+                        response = f"🖥️ Server Status (Dashboard v1.9)\nCPU Usage: {cpu}%\nRAM Usage: {float(ram):.1f}%\nStatus: Online 🟢"
+                    elif cmd == "/speedtest":
+                        send_telegram("🚀 Running speedtest... Please wait.")
+                        res_st = subprocess.run("speedtest-cli --simple 2>/dev/null || echo 'Speedtest failed'", shell=True, capture_output=True, text=True).stdout.strip()
+                        response = f"📊 Speedtest Result:\n{res_st}"
+                    elif cmd == "/reboot":
+                        send_telegram("🔄 Rebooting server now...")
+                        subprocess.run("sudo reboot", shell=True)
+                        response = "Server reboot initiated."
+                    elif cmd == "/pihole_pause":
+                        subprocess.run("pihole disable 300", shell=True)
+                        response = "🛡️ Pi-hole paused for 5 minutes."
+                    
+                    if chat_id:
+                        data = json.dumps({'chat_id': chat_id, 'text': response}).encode()
+                        urllib.request.urlopen(f"https://api.telegram.org/bot{token}/sendMessage", data=data, headers={'Content-Type': 'application/json'}, timeout=5)
+    except Exception as e:
+        pass
+
+if __name__ == '__main__':
+    while True:
+        check_services()
+        poll_telegram_bot()
+        time.sleep(15)
