@@ -217,27 +217,35 @@ def cron_jobs():
                     sched = "Custom"
                     cmd = line
                 
-                desc = "Scheduled system task"
+                desc = "Scheduled system task (مهمة نظام مجدولة)"
+                long_desc = "Executes automated system operations in the background."
                 if "battery_alert.py" in cmd:
-                    desc = "Monitors battery level (alerts when <= 25%)"
+                    desc = "Battery & Power Monitor (مراقبة البطارية والطاقة)"
+                    long_desc = "Checks battery level every 5 minutes. If running on battery and charge drops to 25% or below, sends an instant Telegram alert."
                 elif "speedtest" in cmd:
-                    desc = "Runs periodic internet speed test"
+                    desc = "Internet Speed Test (فحص سرعة الإنترنت)"
+                    long_desc = "Performs periodic download, upload and ping tests to log connection performance history."
                 elif "pihole" in cmd:
-                    desc = "Pi-hole maintenance or list updates"
+                    desc = "Pi-hole Maintenance & Updates (صيانة وتحديث بايهول)"
+                    long_desc = "Updates ad-blocking gravity lists and database records to ensure secure and up-to-date filtering."
                 elif "backup" in cmd:
-                    desc = "System or data backup task"
+                    desc = "System Backup (نسخ احتياطي للنظام)"
+                    long_desc = "Creates automated backups of critical files and configurations."
+                else:
+                    long_desc = f"Executes command: {cmd}"
 
-                jobs.append({
-                    "id": f"{user}_{idx}",
-                    "user": user,
-                    "line_idx": idx,
-                    "schedule": sched,
-                    "schedule_desc": explain_cron_schedule(sched),
-                    "command": cmd,
-                    "description": desc,
-                    "active": cron_svc_status and not is_disabled,
-                    "raw": orig_line
-                })
+                    jobs.append({
+                        "id": f"{user}_{idx}",
+                        "user": user,
+                        "line_idx": idx,
+                        "schedule": sched,
+                        "schedule_desc": explain_cron_schedule(sched),
+                        "command": cmd,
+                        "description": desc,
+                        "long_description": long_desc,
+                        "active": cron_svc_status and not is_disabled,
+                        "raw": orig_line
+                    })
     except:
         pass
     return jobs
@@ -1901,15 +1909,16 @@ HTML = '''
                                 </td>
                                 <td>
                                     <div style="color:var(--text);font-weight:600;margin-bottom:2px;">{{j.description}}</div>
-                                    <div class="t" style="font-size:11px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</div>
+                                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;line-height:1.4;">{{j.long_description}}</div>
+                                    <div class="t" style="font-size:11px;color:var(--text-muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">Command: {{j.command}}</div>
                                 </td>
                                 <td>
-                                    <div style="display:flex; gap:6px; align-items:center;">
+                                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                         <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" onclick="saveScroll()" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
                                             {{ 'Disable' if j.active else 'Enable' }}
                                         </a>
-                                        <button onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
-                                            Edit
+                                        <button type="button" onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                            Edit Time
                                         </button>
                                     </div>
                                 </td>
