@@ -2,16 +2,16 @@
 # Pull the latest dashboard source from sars87/dashboard-v2 GitHub repository and deploy it.
 set -Eeuo pipefail
 
-REPO_URL="git@github.com:sars87/dashboard-v2.git"
+REPO_URL="https://github.com/sars87/dashboard-v2.git"
 REPO_DIR="/home/saif/deployments/dashboard-v2"
 APP_FILE="dashboard.py"
 
 echo "==> Pulling latest changes from sars87/dashboard-v2..."
 if [[ ! -d "$REPO_DIR/.git" ]]; then
     mkdir -p "$(dirname "$REPO_DIR")"
-    git clone "$REPO_URL" "$REPO_DIR"
+    sudo -u saif git clone "$REPO_URL" "$REPO_DIR"
 else
-    git -C "$REPO_DIR" pull --ff-only
+    sudo -u saif git -C "$REPO_DIR" pull --ff-only
 fi
 
 SOURCE_PATH="$REPO_DIR/$APP_FILE"
@@ -33,8 +33,15 @@ fi
 echo "==> Installing updated dashboard to $TARGET_PATH..."
 sudo install -o saif -g saif -m 0644 "$SOURCE_PATH" "$TARGET_PATH"
 
+echo "==> Installing battery alert script..."
+sudo install -o saif -g saif -m 0755 "$REPO_DIR/battery_alert.py" /usr/local/bin/battery_alert.py
+
+# Setup cron job to run battery check every 5 minutes if not already present
+CRON_JOB="*/5 * * * * /usr/local/bin/battery_alert.py >/dev/null 2>&1"
+(crontab -u saif -l 2>/dev/null | grep -Fv "battery_alert.py"; echo "$CRON_JOB") | crontab -u saif -
+
 echo "==> Restarting dashboard service..."
 sudo systemctl restart dashboard.service
 sudo systemctl is-active --quiet dashboard.service
 
-echo "==> Deployment of dashboard-v2 complete successfully!"
+echo "==> Deployment of dashboard-v2 (v1.6) with battery alerts completed successfully!"
