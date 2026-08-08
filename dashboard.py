@@ -178,6 +178,50 @@ def battery():
 def reboot_info():
     return sh("who -b | awk '{print $3\" \"$4}'")
 
+def cron_jobs():
+    jobs = []
+    try:
+        # Check cron service status
+        cron_svc_status = sh("systemctl is-active cron") == "active"
+        
+        # Get crontab for user saif and root
+        for user in ["saif", "root"]:
+            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # Parse schedule and command
+                parts = line.split(None, 5)
+                if len(parts) >= 6:
+                    sched = " ".join(parts[:5])
+                    cmd = parts[5]
+                else:
+                    sched = "Custom"
+                    cmd = line
+                
+                # Determine description based on command
+                desc = "Scheduled system task"
+                if "battery_alert.py" in cmd:
+                    desc = "Monitors battery level (alerts when <= 25%)"
+                elif "speedtest" in cmd:
+                    desc = "Runs periodic internet speed test"
+                elif "pihole" in cmd:
+                    desc = "Pi-hole maintenance or list updates"
+                elif "backup" in cmd:
+                    desc = "System or data backup task"
+
+                jobs.append({
+                    "user": user,
+                    "schedule": sched,
+                    "command": cmd,
+                    "description": desc,
+                    "active": cron_svc_status
+                })
+    except:
+        pass
+    return jobs
+
 def logged():
     return "ok" in session
 
@@ -1785,6 +1829,50 @@ HTML = '''
             </div>
         </section>
 
+        <!-- Cron Jobs Section -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon purple">
+                    <svg viewBox="0 0 24 24" fill="#8b5cf6">
+                        <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+                    </svg>
+                </div>
+                <h2 class="section-title">Scheduled Cron Jobs</h2>
+            </div>
+
+            <div class="games-card">
+                <table class="sthist">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Schedule</th>
+                            <th>Task Description</th>
+                            <th>Command</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for j in cronjobs %}
+                        <tr>
+                            <td class="t" style="font-weight:700;color:var(--primary-light);">{{j.user}}</td>
+                            <td class="pg"><code style="background:rgba(255,255,255,0.06);padding:3px 6px;border-radius:6px;font-size:12px;">{{j.schedule}}</code></td>
+                            <td style="color:var(--text);font-weight:600;">{{j.description}}</td>
+                            <td class="t" style="font-size:12px;color:var(--text-secondary);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</td>
+                            <td>
+                                <span class="status-badge {{'on' if j.active else 'off'}}">
+                                    {{ 'Active' if j.active else 'Inactive' }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not cronjobs %}
+                        <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No scheduled cron jobs found.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- System Actions -->
         <section class="section">
             <div class="section-header">
@@ -2297,7 +2385,8 @@ def dashboard():
         groups=pihole_groups(),
         spd=speedtest(),
         spdhist=speed_history(),
-        bat=battery()
+        bat=battery(),
+        cronjobs=cron_jobs()
     )
 
 @app.route("/groups")
