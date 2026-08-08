@@ -1851,67 +1851,145 @@ HTML = '''
 
         <!-- Cron Jobs Section -->
         <section class="section">
-            <div class="section-header">
-                <div class="section-icon purple">
-                    <svg viewBox="0 0 24 24" fill="#8b5cf6">
-                        <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
-                    </svg>
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon purple">
+                        <svg viewBox="0 0 24 24" fill="#8b5cf6">
+                            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Scheduled Cron Jobs & Management</h2>
                 </div>
-                <h2 class="section-title">Scheduled Cron Jobs & Management</h2>
+                <!-- Status Filter Buttons -->
+                <div style="display:flex; gap:6px;">
+                    <button onclick="filterCron('all')" id="btn_cron_all" class="query-action" style="padding:6px 12px; font-size:11px; background:var(--primary); color:white; border-color:var(--primary);">All</button>
+                    <button onclick="filterCron('active')" id="btn_cron_active" class="query-action" style="padding:6px 12px; font-size:11px;">Active</button>
+                    <button onclick="filterCron('inactive')" id="btn_cron_inactive" class="query-action" style="padding:6px 12px; font-size:11px;">Inactive</button>
+                </div>
             </div>
 
             <!-- Cron Schedule Guide Box -->
-            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; font-size:12px; color:var(--text-secondary);">
-                <strong style="color:var(--text); display:block; margin-bottom:6px;">📖 Cron Schedule Syntax Guide (دليل توقيتات الكرون):</strong>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:8px;">
+            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:16px; margin-bottom:16px; font-size:12px; color:var(--text-secondary);">
+                <strong style="color:var(--text); display:block; margin-bottom:6px;">📖 Cron Syntax Meaning (معنى رموز التوقيت):</strong>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:8px;">
                     <div><code>*/5 * * * *</code>: Every 5 minutes (كل 5 دقائق)</div>
                     <div><code>*/10 * * * *</code>: Every 10 minutes (كل 10 دقائق)</div>
-                    <div><code>0 * * * *</code>: Every hour (كل ساعة)</div>
-                    <div><code>0 0 * * *</code>: Every day at midnight (يومياً منتصف الليل)</div>
+                    <div><code>0 * * * *</code>: Every hour (كل ساعة تماماً)</div>
+                    <div><code>0 0 * * *</code>: Every day at midnight (يومياً 12 منتصف الليل)</div>
                 </div>
             </div>
 
             <div class="games-card">
-                <table class="sthist">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Schedule & Meaning</th>
-                            <th>Task Description</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for j in cronjobs %}
-                        <tr>
-                            <td class="t" style="font-weight:700;color:var(--primary-light);">{{j.user}}</td>
-                            <td>
-                                <code style="background:rgba(255,255,255,0.06);padding:3px 6px;border-radius:6px;font-size:12px;display:inline-block;margin-bottom:4px;">{{j.schedule}}</code>
-                                <div style="font-size:11px;color:var(--text-muted);">{{j.schedule_desc}}</div>
-                            </td>
-                            <td>
-                                <div style="color:var(--text);font-weight:600;margin-bottom:2px;">{{j.description}}</div>
-                                <div class="t" style="font-size:11px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</div>
-                            </td>
-                            <td>
-                                <div style="display:flex; gap:6px; align-items:center;">
-                                    <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
-                                        {{ 'Disable' if j.active else 'Enable' }}
-                                    </a>
-                                    <button onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
-                                        Edit
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        {% if not cronjobs %}
-                        <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No scheduled cron jobs found.</td></tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+                <!-- Scrollable container showing up to latest 5 jobs -->
+                <div style="max-height: 380px; overflow-y: auto;">
+                    <table class="sthist">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Schedule & Meaning</th>
+                                <th>Task Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cron_table_body">
+                            {% for j in cronjobs[:5] %}
+                            <tr class="cron-row" data-active="{{ 'true' if j.active else 'false' }}">
+                                <td class="t" style="font-weight:700;color:var(--primary-light);">{{j.user}}</td>
+                                <td>
+                                    <code style="background:rgba(255,255,255,0.06);padding:3px 6px;border-radius:6px;font-size:12px;display:inline-block;margin-bottom:4px;">{{j.schedule}}</code>
+                                    <div style="font-size:11px;color:var(--text-muted);">{{j.schedule_desc}}</div>
+                                </td>
+                                <td>
+                                    <div style="color:var(--text);font-weight:600;margin-bottom:2px;">{{j.description}}</div>
+                                    <div class="t" style="font-size:11px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; align-items:center;">
+                                        <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
+                                            {{ 'Disable' if j.active else 'Enable' }}
+                                        </a>
+                                        <button onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                            Edit
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not cronjobs %}
+                            <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No scheduled cron jobs found.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
+
+        <!-- Edit Cron Modal with Preset Selector -->
+        <div id="cronModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:480px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Edit Cron Schedule (تعديل توقيت المهمة)</h3>
+                <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">اختر توقيت جاهز أو اكتب صيغة Cron مخصصة (مثال: <code>*/5 * * * *</code> تعني التنفيذ كل 5 دقائق).</p>
+                <form method="POST" action="/action/cron_edit">
+                    <input type="hidden" name="user" id="edit_user">
+                    <input type="hidden" name="line_idx" id="edit_line_idx">
+                    
+                    <div style="margin-bottom:14px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Quick Presets (توقيتات جاهزة):</label>
+                        <select id="cron_preset" onchange="applyCronPreset(this.value)" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); color:var(--text); font:inherit; margin-bottom:10px;">
+                            <option value="">-- Custom Schedule --</option>
+                            <option value="*/5 * * * *">Every 5 minutes (كل 5 دقائق)</option>
+                            <option value="*/10 * * * *">Every 10 minutes (كل 10 دقائق)</option>
+                            <option value="0 * * * *">Every hour (كل ساعة)</option>
+                            <option value="0 0 * * *">Every day at midnight (يومياً منتصف الليل)</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom:20px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Cron Schedule Expression:</label>
+                        <input type="text" name="schedule" id="edit_schedule" required style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); color:var(--text); font:inherit; font-family:monospace;">
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="closeCronEdit()" style="padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font:inherit;">Cancel</button>
+                        <button type="submit" style="padding:8px 16px; border-radius:8px; border:none; background:var(--primary); color:white; cursor:pointer; font:inherit; font-weight:700;">Save Schedule</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            function openCronEdit(user, lineIdx, sched) {
+                document.getElementById('edit_user').value = user;
+                document.getElementById('edit_line_idx').value = lineIdx;
+                document.getElementById('edit_schedule').value = sched;
+                document.getElementById('cron_preset').value = "";
+                document.getElementById('cronModal').style.display = 'flex';
+            }
+            function closeCronEdit() {
+                document.getElementById('cronModal').style.display = 'none';
+            }
+            function applyCronPreset(val) {
+                if(val) {
+                    document.getElementById('edit_schedule').value = val;
+                }
+            }
+            function filterCron(status) {
+                const rows = document.querySelectorAll('.cron-row');
+                ['all', 'active', 'inactive'].forEach(s => {
+                    const btn = document.getElementById('btn_cron_' + s);
+                    if(btn) {
+                        btn.style.background = s === status ? 'var(--primary)' : 'transparent';
+                        btn.style.color = s === status ? 'white' : 'var(--text-secondary)';
+                        btn.style.borderColor = s === status ? 'var(--primary)' : 'var(--border)';
+                    }
+                });
+                rows.forEach(r => {
+                    const active = r.dataset.active === 'true';
+                    if(status === 'all') r.style.display = '';
+                    else if(status === 'active') r.style.display = active ? '' : 'none';
+                    else if(status === 'inactive') r.style.display = !active ? '' : 'none';
+                });
+            }
+        </script>
 
         <!-- Edit Cron Modal / Form Container -->
         <div id="cronModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
