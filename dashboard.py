@@ -178,20 +178,37 @@ def battery():
 def reboot_info():
     return sh("who -b | awk '{print $3\" \"$4}'")
 
+def explain_cron_schedule(sched):
+    s = sched.strip()
+    if s == "*/5 * * * *":
+        return "Every 5 minutes (كل 5 دقائق)"
+    elif s == "*/10 * * * *":
+        return "Every 10 minutes (كل 10 دقائق)"
+    elif s == "0 * * * *":
+        return "Every hour (كل ساعة)"
+    elif s == "0 0 * * *":
+        return "Every day at midnight (كل يوم منتصف الليل)"
+    elif s == "0 0 * * 0":
+        return "Every week on Sunday (كل أسبوع يوم الأحد)"
+    return f"Custom schedule: {s}"
+
 def cron_jobs():
     jobs = []
     try:
-        # Check cron service status
         cron_svc_status = sh("systemctl is-active cron") == "active"
         
-        # Get crontab for user saif and root
         for user in ["saif", "root"]:
             raw = sh(f"crontab -u {user} -l 2>/dev/null")
-            for line in raw.splitlines():
+            for idx, line in enumerate(raw.splitlines()):
+                orig_line = line
                 line = line.strip()
-                if not line or line.startswith("#"):
+                if not line:
                     continue
-                # Parse schedule and command
+                
+                is_disabled = line.startswith("#")
+                if is_disabled:
+                    line = line.lstrip("#").strip()
+                
                 parts = line.split(None, 5)
                 if len(parts) >= 6:
                     sched = " ".join(parts[:5])
@@ -200,7 +217,6 @@ def cron_jobs():
                     sched = "Custom"
                     cmd = line
                 
-                # Determine description based on command
                 desc = "Scheduled system task"
                 if "battery_alert.py" in cmd:
                     desc = "Monitors battery level (alerts when <= 25%)"
@@ -212,11 +228,15 @@ def cron_jobs():
                     desc = "System or data backup task"
 
                 jobs.append({
+                    "id": f"{user}_{idx}",
                     "user": user,
+                    "line_idx": idx,
                     "schedule": sched,
+                    "schedule_desc": explain_cron_schedule(sched),
                     "command": cmd,
                     "description": desc,
-                    "active": cron_svc_status
+                    "active": cron_svc_status and not is_disabled,
+                    "raw": orig_line
                 })
     except:
         pass
@@ -1837,7 +1857,18 @@ HTML = '''
                         <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
                     </svg>
                 </div>
-                <h2 class="section-title">Scheduled Cron Jobs</h2>
+                <h2 class="section-title">Scheduled Cron Jobs & Management</h2>
+            </div>
+
+            <!-- Cron Schedule Guide Box -->
+            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px; font-size:12px; color:var(--text-secondary);">
+                <strong style="color:var(--text); display:block; margin-bottom:6px;">📖 Cron Schedule Syntax Guide (دليل توقيتات الكرون):</strong>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:8px;">
+                    <div><code>*/5 * * * *</code>: Every 5 minutes (كل 5 دقائق)</div>
+                    <div><code>*/10 * * * *</code>: Every 10 minutes (كل 10 دقائق)</div>
+                    <div><code>0 * * * *</code>: Every hour (كل ساعة)</div>
+                    <div><code>0 0 * * *</code>: Every day at midnight (يومياً منتصف الليل)</div>
+                </div>
             </div>
 
             <div class="games-card">
@@ -1845,33 +1876,73 @@ HTML = '''
                     <thead>
                         <tr>
                             <th>User</th>
-                            <th>Schedule</th>
+                            <th>Schedule & Meaning</th>
                             <th>Task Description</th>
-                            <th>Command</th>
-                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for j in cronjobs %}
                         <tr>
                             <td class="t" style="font-weight:700;color:var(--primary-light);">{{j.user}}</td>
-                            <td class="pg"><code style="background:rgba(255,255,255,0.06);padding:3px 6px;border-radius:6px;font-size:12px;">{{j.schedule}}</code></td>
-                            <td style="color:var(--text);font-weight:600;">{{j.description}}</td>
-                            <td class="t" style="font-size:12px;color:var(--text-secondary);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</td>
                             <td>
-                                <span class="status-badge {{'on' if j.active else 'off'}}">
-                                    {{ 'Active' if j.active else 'Inactive' }}
-                                </span>
+                                <code style="background:rgba(255,255,255,0.06);padding:3px 6px;border-radius:6px;font-size:12px;display:inline-block;margin-bottom:4px;">{{j.schedule}}</code>
+                                <div style="font-size:11px;color:var(--text-muted);">{{j.schedule_desc}}</div>
+                            </td>
+                            <td>
+                                <div style="color:var(--text);font-weight:600;margin-bottom:2px;">{{j.description}}</div>
+                                <div class="t" style="font-size:11px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{j.command}}">{{j.command}}</div>
+                            </td>
+                            <td>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
+                                        {{ 'Disable' if j.active else 'Enable' }}
+                                    </a>
+                                    <button onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                        Edit
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
                         {% if not cronjobs %}
-                        <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No scheduled cron jobs found.</td></tr>
+                        <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px;">No scheduled cron jobs found.</td></tr>
                         {% endif %}
                     </tbody>
                 </table>
             </div>
         </section>
+
+        <!-- Edit Cron Modal / Form Container -->
+        <div id="cronModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:450px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; margin-bottom:16px; color:var(--text);">Edit Cron Schedule</h3>
+                <form method="POST" action="/action/cron_edit">
+                    <input type="hidden" name="user" id="edit_user">
+                    <input type="hidden" name="line_idx" id="edit_line_idx">
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Cron Schedule Expression (e.g. */5 * * * *)</label>
+                        <input type="text" name="schedule" id="edit_schedule" required style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); color:var(--text); font:inherit;">
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="closeCronEdit()" style="padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; font:inherit;">Cancel</button>
+                        <button type="submit" style="padding:8px 16px; border-radius:8px; border:none; background:var(--primary); color:white; cursor:pointer; font:inherit; font-weight:700;">Save Schedule</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            function openCronEdit(user, lineIdx, sched) {
+                document.getElementById('edit_user').value = user;
+                document.getElementById('edit_line_idx').value = lineIdx;
+                document.getElementById('edit_schedule').value = sched;
+                document.getElementById('cronModal').style.display = 'flex';
+            }
+            function closeCronEdit() {
+                document.getElementById('cronModal').style.display = 'none';
+            }
+        </script>
 
         <!-- System Actions -->
         <section class="section">
@@ -2458,6 +2529,63 @@ def domain_action(action):
 def logout():
     session.clear()
     return redirect("/")
+
+@app.route("/action/cron_toggle/<user>/<int:line_idx>")
+def cron_toggle(user, line_idx):
+    if not logged():
+        return redirect("/")
+    if user in ["saif", "root"]:
+        try:
+            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            lines = raw.splitlines()
+            if 0 <= line_idx < len(lines):
+                line = lines[line_idx].strip()
+                if line.startswith("#"):
+                    lines[line_idx] = line.lstrip("#").strip()
+                else:
+                    lines[line_idx] = "# " + line
+                new_crontab = "\n".join(lines) + "\n"
+                p = subprocess.run(["crontab", "-u", user, "-"], input=new_crontab, text=True, capture_output=True)
+        except:
+            pass
+    return redirect("/dashboard")
+
+@app.route("/action/cron_edit", methods=["POST"])
+def cron_edit():
+    if not logged():
+        return redirect("/")
+    user = request.form.get("user")
+    try:
+        line_idx = int(request.form.get("line_idx", -1))
+    except:
+        line_idx = -1
+    new_sched = request.form.get("schedule", "").strip()
+    
+    if user in ["saif", "root"] and line_idx >= 0 and new_sched:
+        try:
+            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            lines = raw.splitlines()
+            if 0 <= line_idx < len(lines):
+                line = lines[line_idx].strip()
+                is_disabled = line.startswith("#")
+                clean_line = line.lstrip("#").strip()
+                
+                parts = clean_line.split(None, 5)
+                if len(parts) >= 6:
+                    cmd = parts[5]
+                else:
+                    cmd = clean_line
+                
+                updated_line = f"{new_sched} {cmd}"
+                if is_disabled:
+                    updated_line = "# " + updated_line
+                
+                lines[line_idx] = updated_line
+                new_crontab = "\n".join(lines) + "\n"
+                subprocess.run(["crontab", "-u", user, "-"], input=new_crontab, text=True, capture_output=True)
+        except:
+            pass
+    return redirect("/dashboard")
 
 @app.route("/action/<path:name>")
 def action(name):
