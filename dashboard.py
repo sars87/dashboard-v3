@@ -125,6 +125,56 @@ def temp():
 def uptime():
     return sh("uptime -p").replace("up ", "")
 
+def battery():
+    try:
+        # Check standard Linux sysfs ACPI battery paths
+        bat_path = ""
+        for b in ["BAT0", "BAT1", "BAT"]:
+            if os.path.exists(f"/sys/class/power_supply/{b}"):
+                bat_path = f"/sys/class/power_supply/{b}"
+                break
+        
+        ac_online = False
+        for ac in ["AC", "ACAD", "ADP1", "ADP0"]:
+            ac_file = f"/sys/class/power_supply/{ac}/online"
+            if os.path.exists(ac_file):
+                with open(ac_file) as f:
+                    if f.read().strip() == "1":
+                        ac_online = True
+                        break
+        
+        # If no explicit AC online file, check status
+        if not bat_path:
+            return {"status": "Plugged (AC)", "percent": 100, "charging": True, "has_battery": False}
+
+        capacity = 100
+        cap_file = f"{bat_path}/capacity"
+        if os.path.exists(cap_file):
+            with open(cap_file) as f:
+                capacity = int(f.read().strip() or 100)
+
+        status_str = "Unknown"
+        status_file = f"{bat_path}/status"
+        if os.path.exists(status_file):
+            with open(status_file) as f:
+                status_str = f.read().strip()
+
+        is_charging = status_str in ["Charging", "Full"] or ac_online
+        
+        if is_charging:
+            status_text = "Plugged (Charging)" if status_str == "Charging" else ("Plugged (Full)" if status_str == "Full" else "Plugged (AC)")
+        else:
+            status_text = f"Battery ({capacity}%)"
+
+        return {
+            "status": status_text,
+            "percent": capacity,
+            "charging": is_charging,
+            "has_battery": True
+        }
+    except:
+        return {"status": "Plugged (AC)", "percent": 100, "charging": True, "has_battery": False}
+
 def reboot_info():
     return sh("who -b | awk '{print $3\" \"$4}'")
 
@@ -1724,6 +1774,14 @@ HTML = '''
                         <div class="health-fill temp" style="width: {{ (temp/80)*100 }}%;"></div>
                     </div>
                 </div>
+
+                <div class="health-card" style="--bar-color: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};">
+                    <div class="health-label">Power & Battery</div>
+                    <div class="health-value" style="font-size: 24px;">{{bat.status}}</div>
+                    <div class="health-bar">
+                        <div class="health-fill" style="width: {{bat.percent}}%; background: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};"></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -2238,7 +2296,8 @@ def dashboard():
         upd=updates_count(),
         groups=pihole_groups(),
         spd=speedtest(),
-        spdhist=speed_history()
+        spdhist=speed_history(),
+        bat=battery()
     )
 
 @app.route("/groups")
