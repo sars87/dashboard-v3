@@ -2692,6 +2692,7 @@ def dashboard():
         spd=speedtest(),
         spdhist=speed_history(),
         bat=battery(),
+        docker=docker_containers(),
         cronjobs=cron_jobs()
     )
 
