@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v1.9.1"
+VERSION = "Dashboard v2.0.0"
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -283,7 +283,7 @@ def cron_jobs():
         cron_svc_status = sh("systemctl is-active cron") == "active"
         
         for user in ["saif", "root"]:
-            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            raw = read_crontab(user)
             for idx, line in enumerate(raw.splitlines()):
                 orig_line = line
                 line = line.strip()
@@ -334,6 +334,24 @@ def cron_jobs():
     except:
         pass
     return jobs
+
+def crontab_command(user, *args):
+    command = ["crontab", "-u", user, *args]
+    return ["sudo", *command] if user == "root" else command
+
+def read_crontab(user):
+    try:
+        return subprocess.run(crontab_command(user, "-l"), capture_output=True,
+                              text=True, check=False).stdout
+    except OSError:
+        return ""
+
+def write_crontab(user, content):
+    try:
+        return subprocess.run(crontab_command(user, "-"), input=content,
+                              text=True, capture_output=True, check=False).returncode == 0
+    except OSError:
+        return False
 
 def logged():
     return "ok" in session
@@ -2753,7 +2771,7 @@ def cron_toggle(user, line_idx):
         return redirect("/")
     if user in ["saif", "root"]:
         try:
-            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            raw = read_crontab(user)
             lines = raw.splitlines()
             if 0 <= line_idx < len(lines):
                 line = lines[line_idx].strip()
@@ -2762,7 +2780,7 @@ def cron_toggle(user, line_idx):
                 else:
                     lines[line_idx] = "# " + line
                 new_crontab = "\n".join(lines) + "\n"
-                p = subprocess.run(["crontab", "-u", user, "-"], input=new_crontab, text=True, capture_output=True)
+                write_crontab(user, new_crontab)
         except:
             pass
     return redirect("/dashboard")
@@ -2778,9 +2796,10 @@ def cron_edit():
         line_idx = -1
     new_sched = request.form.get("schedule", "").strip()
     
-    if user in ["saif", "root"] and line_idx >= 0 and new_sched:
+    if (user in ["saif", "root"] and line_idx >= 0 and
+            re.fullmatch(r"[0-9*/,-]+(?:\s+[0-9*/,-]+){4}", new_sched)):
         try:
-            raw = sh(f"crontab -u {user} -l 2>/dev/null")
+            raw = read_crontab(user)
             lines = raw.splitlines()
             if 0 <= line_idx < len(lines):
                 line = lines[line_idx].strip()
@@ -2799,8 +2818,19 @@ def cron_edit():
                 
                 lines[line_idx] = updated_line
                 new_crontab = "\n".join(lines) + "\n"
-                subprocess.run(["crontab", "-u", user, "-"], input=new_crontab, text=True, capture_output=True)
+                write_crontab(user, new_crontab)
         except:
+            pass
+    return redirect("/dashboard")
+
+@app.route("/action/docker/<action>/<container_id>")
+def docker_action(action, container_id):
+    if not logged():
+        return redirect("/")
+    if action in {"start", "stop", "restart"} and re.fullmatch(r"[a-f0-9]{12,64}", container_id):
+        try:
+            subprocess.run(["sudo", "docker", action, container_id], check=False, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
             pass
     return redirect("/dashboard")
 

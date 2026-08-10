@@ -2,7 +2,7 @@
 # Pull the latest dashboard source from sars87/dashboard-v2 GitHub repository and deploy it.
 set -Eeuo pipefail
 
-REPO_URL="https://github.com/sars87/dashboard-v2.git"
+REPO_URL="git@github.com:sars87/dashboard-v2.git"
 REPO_DIR="/home/saif/deployments/dashboard-v2"
 APP_FILE="dashboard.py"
 
@@ -37,14 +37,17 @@ echo "==> Installing alert and watchdog scripts..."
 sudo install -o saif -g saif -m 0755 "$REPO_DIR/battery_alert.py" /usr/local/bin/battery_alert.py
 sudo install -o saif -g saif -m 0755 "$REPO_DIR/disk_alert.py" /usr/local/bin/disk_alert.py
 sudo install -o saif -g saif -m 0755 "$REPO_DIR/server_watchdog.py" /usr/local/bin/server_watchdog.py
+sudo install -o root -g root -m 0644 "$REPO_DIR/dashboard-watchdog.service" /etc/systemd/system/dashboard-watchdog.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now dashboard-watchdog.service
 
-# Setup cron jobs
+# Setup alert cron jobs without disturbing unrelated user jobs.
 CRON_JOB_BAT="*/5 * * * * /usr/local/bin/battery_alert.py >/dev/null 2>&1"
 CRON_JOB_DSK="*/10 * * * * /usr/local/bin/disk_alert.py >/dev/null 2>&1"
-(crontab -u saif -l 2>/dev/null | grep -Fv "battery_alert.py" | grep -Fv "disk_alert.py"; echo "$CRON_JOB_BAT"; echo "$CRON_JOB_DSK") | crontab -u saif -
+(sudo -u saif crontab -l 2>/dev/null | grep -Fv "battery_alert.py" | grep -Fv "disk_alert.py"; echo "$CRON_JOB_BAT"; echo "$CRON_JOB_DSK") | sudo -u saif crontab -
 
-echo "==> Restarting dashboard service and watchdog..."
+echo "==> Restarting dashboard service..."
 sudo systemctl restart dashboard.service
 sudo systemctl is-active --quiet dashboard.service
 
-echo "==> Deployment of Dashboard v1.9 completed successfully!"
+echo "==> Deployment of Dashboard v2.0 completed successfully!"

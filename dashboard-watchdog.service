@@ -1,0 +1,15 @@
+[Unit]
+Description=Home Dashboard service watchdog and Telegram monitor
+After=network-online.target dashboard.service tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=saif
+WorkingDirectory=/home/saif
+ExecStart=/usr/bin/python3 /usr/local/bin/server_watchdog.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

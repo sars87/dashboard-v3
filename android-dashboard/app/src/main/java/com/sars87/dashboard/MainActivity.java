@@ -22,7 +22,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends android.app.Activity {
-    private static final String DASHBOARD_URL = "http://100.92.137.86:8088";
+    private static final String DASHBOARD_URL = "http://192.168.100.3:8088";
     private static final String TAILSCALE_PACKAGE = "com.tailscale.ipn";
     private static final int CHECK_INTERVAL_SECONDS = 3;
 

@@ -1,6 +1,6 @@
 # Home Dashboard Android app
 
-This Android app opens the Pi-hole dashboard at `http://100.92.137.86:8088`.
+This Android app opens the Pi-hole dashboard at `http://192.168.100.3:8088`.
 
 ## Behaviour
 
