@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v1.9"
+VERSION = "Dashboard v1.9.1"
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -1820,6 +1820,40 @@ HTML = '''
                             {% endif %}
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Docker Containers Manager -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon" style="background:rgba(59,130,246,0.15);">
+                    <svg viewBox="0 0 24 24" fill="#3b82f6" width="20" height="20"><path d="M4 19h16v2H4zm16-6h-2.14l-.45-1.35c-.24-.71-.92-1.2-1.71-1.2h-7.4c-.79 0-1.47.49-1.71 1.2L6.14 13H4c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-3c0-1.1-.9-2-2-2zm-2.5 1.5c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zM6.5 15c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zM12 2L9.5 4.5h5L12 2zm2 7H10V7h4v2z"/></svg>
+                </div>
+                <h2 class="section-title">Docker Containers Manager</h2>
+            </div>
+            <div class="card">
+                <div class="services-grid">
+                    {% for c in docker %}
+                    <div class="service-card">
+                        <div class="service-info">
+                            <div class="service-name">{{c.name}}</div>
+                            <div class="service-status">
+                                <span class="status-badge {{'on' if c.state == 'running' else 'off'}}">
+                                    {{c.status}}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="service-actions">
+                            <a href="/action/docker/start/{{c.id}}" onclick="saveScroll()" class="btn-service on">Start</a>
+                            <a href="/action/docker/stop/{{c.id}}" onclick="saveScroll()" class="btn-service off">Stop</a>
+                            <a href="/action/docker/restart/{{c.id}}" onclick="saveScroll()" class="btn-service" style="background:rgba(59,130,246,0.15); color:#3b82f6;">Restart</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if not docker %}
+                    <div style="text-align:center; padding:16px; color:var(--text-muted); font-size:13px; grid-column: 1/-1;">No Docker containers found or Docker is not running.</div>
+                    {% endif %}
                 </div>
             </div>
         </section>
