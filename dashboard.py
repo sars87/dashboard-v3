@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v2.0.0"
+VERSION = "Dashboard v1.9.2"
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -193,8 +193,11 @@ def disk_info():
     return {"percent": 0, "total": "0", "used": "0", "free": "0"}
 
 def docker_containers():
-    containers = []
     try:
+        check = sh("docker info >/dev/null 2>&1 && echo OK")
+        if check != "OK":
+            return None
+        containers = []
         raw = sh("docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.State}}' 2>/dev/null")
         for line in raw.splitlines():
             parts = line.split('|')
@@ -206,9 +209,9 @@ def docker_containers():
                     "status": parts[3],
                     "state": parts[4].lower()
                 })
+        return containers
     except:
-        pass
-    return containers
+        return None
 
 def explain_cron_schedule(sched):
     s = sched.strip()
@@ -1842,6 +1845,7 @@ HTML = '''
             </div>
         </section>
 
+        {% if docker is not none %}
         <!-- Docker Containers Manager -->
         <section class="section">
             <div class="section-header">
@@ -1869,12 +1873,10 @@ HTML = '''
                         </div>
                     </div>
                     {% endfor %}
-                    {% if not docker %}
-                    <div style="text-align:center; padding:16px; color:var(--text-muted); font-size:13px; grid-column: 1/-1;">No Docker containers found or Docker is not running.</div>
-                    {% endif %}
                 </div>
             </div>
         </section>
+        {% endif %}
 
         <!-- Sub Control -->
         <section class="section">
