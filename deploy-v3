@@ -1,8 +1,8 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v6.0 Ultimate Deployment Installer (`deploy-v3`)
+# Dashboard v7.0 Cyberpunk Nexus Deployment Installer (`deploy-v3`)
 # ==========================================================
-echo "==> [1/3] Pulling latest Dashboard v6.0 Ultimate from GitHub..."
+echo "==> [1/3] Pulling latest Dashboard v7.0 Cyberpunk Nexus from GitHub..."
 cd /home/saif/deployments/dashboard-v3 2>/dev/null || {
     mkdir -p /home/saif/deployments
     git clone https://github.com/sars87/dashboard-v3.git /home/saif/deployments/dashboard-v3
@@ -17,5 +17,5 @@ echo "==> [3/3] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service
 
 echo "=========================================================="
-echo "✨ Dashboard v6.0 Ultimate deployed & updated successfully!"
+echo "✨ Dashboard v7.0 Cyberpunk Nexus deployed successfully!"
 echo "=========================================================="

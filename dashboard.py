@@ -8,7 +8,23 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v6.0 Ultimate"
+VERSION = "Dashboard v7.0 Cyberpunk Nexus"
+
+def run_custom_command(cmd):
+    # Allowed safe diagnostic commands or general execution with timeout
+    if not cmd:
+        return ""
+    # Block dangerous destructive commands for safety
+    dangerous = ["rm -rf /", "mkfs", "dd if=", ":(){ :|:& };:"]
+    for d in dangerous:
+        if d in cmd:
+            return "Error: Command blocked for security reasons."
+    try:
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        output = res.stdout + res.stderr
+        return output.strip() if output.strip() else "Command executed successfully with no output."
+    except Exception as e:
+        return f"Execution error: {str(e)}"
 
 def open_ports_scan():
     # Scan listening ports on server
@@ -2141,6 +2157,35 @@ HTML = '''
             </div>
         </div>
 
+        <!-- v7.0 Cyberpunk Nexus: Interactive Web Terminal / Command Runner -->
+        <section class="section" style="border:1px solid rgba(56,189,248,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(56,189,248,0.07);">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon cyan" style="background:rgba(56,189,248,0.15); color:#38bdf8; box-shadow:0 0 15px rgba(56,189,248,0.3);">
+                        <svg viewBox="0 0 24 24" fill="#38bdf8" width="20" height="20">
+                            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H7v-2h8v2zm3-4H6v-2h12v2zm0-4H6V8h12v2z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0; color:#38bdf8;">Cyberpunk Web Terminal (محطة أوامر السيرفر التفاعلية)</h2>
+                </div>
+                <span style="font-size:11px; color:#34d399; background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Secure Root Shell</span>
+            </div>
+
+            <div style="margin-top:16px;">
+                <form method="POST" action="/action/terminal" onsubmit="runWithProgress('Executing Command', 'Running diagnostics in server shell...', '/action/terminal')" style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <input type="text" name="command" placeholder="Enter shell command e.g. df -h, free -m, uptime, systemctl status..." required style="flex:1; min-width:260px; padding:12px 16px; border-radius:10px; background:#030712; border:1px solid rgba(56,189,248,0.3); color:#f3f4f6; font-family:monospace; font-size:13px; outline:none; box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);">
+                    <button type="submit" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:white; border:none; padding:12px 24px; border-radius:10px; font-weight:700; cursor:pointer; font-size:13px; box-shadow:0 0 20px rgba(2,132,199,0.4); transition:all 0.2s;">⚡ Execute</button>
+                </form>
+                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                    <span style="font-size:11px; color:var(--text-muted); align-self:center;">Quick Diagnostic Presets:</span>
+                    <button type="button" onclick="document.querySelector('input[name=command]').value='df -h'" style="background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text-secondary); padding:3px 8px; border-radius:6px; font-size:11px; cursor:pointer;">Disk Usage (df -h)</button>
+                    <button type="button" onclick="document.querySelector('input[name=command]').value='free -m'" style="background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text-secondary); padding:3px 8px; border-radius:6px; font-size:11px; cursor:pointer;">Memory (free -m)</button>
+                    <button type="button" onclick="document.querySelector('input[name=command]').value='uptime'" style="background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text-secondary); padding:3px 8px; border-radius:6px; font-size:11px; cursor:pointer;">Uptime</button>
+                    <button type="button" onclick="document.querySelector('input[name=command]').value='ss -tulpn'" style="background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text-secondary); padding:3px 8px; border-radius:6px; font-size:11px; cursor:pointer;">Listening Ports</button>
+                </div>
+            </div>
+        </section>
+
         <!-- v6.0 Ultimate Module: Active Systemd Service Manager & Open Ports -->
         <section class="section">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -3073,6 +3118,37 @@ def dashboard():
         sys_services=systemd_services_list()
     )
 
+TERMINAL_RESULT_HTML = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Terminal Execution Result - {{version}}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { background: #030712; color: #f3f4f6; font-family: 'JetBrains Mono', monospace; padding: 24px; }
+        .terminal-box { background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 20px; box-shadow: 0 0 30px rgba(56,189,248,0.1); }
+        .btn { background: #0284c7; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block; transition: all 0.2s; }
+        .btn:hover { background: #0369a1; box-shadow: 0 0 15px rgba(2,132,199,0.5); }
+    </style>
+</head>
+<body>
+    <div class="max-w-4xl mx-auto">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h1 style="font-size:20px; color:#38bdf8; font-weight:700;">⚡ Terminal Execution Output</h1>
+            <a href="/dashboard" class="btn">← Back to Dashboard</a>
+        </div>
+        <div class="terminal-box">
+            <div style="color:#94a3b8; margin-bottom:8px; font-size:13px;">$ {{command}}</div>
+            <pre style="color:#34d399; font-size:12px; white-space:pre-wrap; word-break:break-all; line-height:1.5; margin:0;">{{result}}</pre>
+        </div>
+    </div>
+</body>
+</html>
+'''
+
 @app.route("/groups")
 def groups():
     if not logged():
@@ -3137,6 +3213,14 @@ def control_service(sname, action):
     if action in ["start", "stop", "restart"]:
         sh(f"sudo systemctl {action} {sname} 2>/dev/null")
     return redirect("/dashboard")
+
+@app.route("/action/terminal", methods=["POST"])
+def web_terminal():
+    if not logged():
+        return redirect("/")
+    cmd = request.form.get("command", "").strip()
+    result = run_custom_command(cmd)
+    return render_template_string(TERMINAL_RESULT_HTML, version=VERSION, command=cmd, result=result)
 
 @app.route("/net")
 def net():
