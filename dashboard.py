@@ -8,7 +8,48 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v2.0"
+VERSION = "Dashboard v3.0 Ultimate"
+
+NOTES_FILE = "/tmp/dashboard_secure_notes.json"
+
+def get_secure_notes():
+    default_notes = [
+        {"id": "1", "title": "Home Wi-Fi Details", "content": "SSID: HomeNetwork / Pass: sars87_home"},
+        {"id": "2", "title": "Router Access", "content": "IP: 192.168.100.1 / Admin: admin"}
+    ]
+    try:
+        if os.path.exists(NOTES_FILE):
+            with open(NOTES_FILE, "r") as f:
+                data = json.load(f)
+                if data:
+                    return data
+    except:
+        pass
+    return default_notes
+
+def save_secure_notes(notes):
+    try:
+        with open(NOTES_FILE, "w") as f:
+            json.dump(notes, f)
+    except:
+        pass
+
+def firewall_status():
+    res = sh("sudo ufw status")
+    return res if res else "UFW Status Unavailable"
+
+def ssh_failed_attempts():
+    out = sh("grep 'Failed password' /var/log/auth.log 2>/dev/null | tail -n 10")
+    if not out:
+        out = sh("journalctl -u ssh -n 20 --no-pager 2>/dev/null | grep 'Failed' | tail -n 10")
+    return out if out else "No recent failed SSH login attempts recorded."
+
+def lan_arp_scan():
+    # Scan local network devices via arp table or ip neighbor
+    out = sh("ip neigh show 2>/dev/null || arp -a 2>/dev/null")
+    if not out:
+        out = sh("cat /proc/net/arp 2>/dev/null")
+    return out if out else "ARP table unavailable."
 QUICK_LINKS_FILE = "/tmp/dashboard_quick_links.json"
 
 def get_quick_links():
@@ -2021,6 +2062,95 @@ HTML = '''
             </div>
         </section>
 
+        <!-- v3.0 Ultimate Module 1: Secure Home Notes & Info Board -->
+        <section class="section">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon purple">
+                        <svg viewBox="0 0 24 24" fill="#8b5cf6">
+                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v-2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Home Info & Secure Notes Board (ملاحظات ومعلومات البيت الآمنة)</h2>
+                </div>
+                <button type="button" onclick="document.getElementById('noteModal').style.display='flex'" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--primary); color:white; border-color:var(--primary); cursor:pointer;">
+                    + Add Note
+                </button>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin-top:16px;">
+                {% for n in secure_notes %}
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-weight:700; color:var(--text); font-size:13px;">{{n.title}}</span>
+                            <a href="/action/notes/delete/{{n.id}}" onclick="saveScroll()" title="Delete Note" style="color:var(--danger); font-size:12px; text-decoration:none; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">✕</a>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-secondary); white-space:pre-wrap; word-break:break-all; line-height:1.4;">{{n.content}}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Add Note Modal -->
+        <div id="noteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:400px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Add Home Note (إضافة ملاحظة جديدة)</h3>
+                <form method="POST" action="/action/notes/add" onsubmit="saveScroll()">
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Title (العنوان):</label>
+                        <input type="text" name="title" placeholder="e.g. Wi-Fi Password, Router IP" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
+                    </div>
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Content (المحتوى):</label>
+                        <textarea name="content" rows="3" placeholder="Write details here..." required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px; resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                        <button type="button" onclick="document.getElementById('noteModal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:8px 16px; border-radius:8px; cursor:pointer;">Cancel</button>
+                        <button type="submit" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Save Note</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- v3.0 Ultimate Module 2: LAN ARP Network Scanner & Security Monitor -->
+        <section class="section">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon orange">
+                        <svg viewBox="0 0 24 24" fill="#f59e0b">
+                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Network Scanner & Server Security (فحص الشبكة وحماية السيرفر)</h2>
+                </div>
+                <a href="/action/cleanup_cache" onclick="saveScroll()" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--success, #10b981); color:white; border-color:var(--success, #10b981); text-decoration:none;">
+                    🧹 Clean System Cache & Temp
+                </a>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
+                <!-- LAN ARP Scanner Card -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🌐 Connected LAN Devices (ARP)</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--text-secondary); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{arp_devices}}</pre>
+                </div>
+
+                <!-- UFW Status Card -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🛡️ UFW Firewall Status</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--text-secondary); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{fw_status}}</pre>
+                </div>
+
+                <!-- SSH Failed Login Attempts -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🚨 Recent SSH Failed Logins</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--danger, #ef4444); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{ssh_failures}}</pre>
+                </div>
+            </div>
+        </section>
+
         <!-- Quick Links Launcher Section -->
         <section class="section">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -2776,7 +2906,11 @@ def dashboard():
         bat=battery(),
         docker=docker_containers(),
         cronjobs=cron_jobs(),
-        quick_links=get_quick_links()
+        quick_links=get_quick_links(),
+        secure_notes=get_secure_notes(),
+        fw_status=firewall_status(),
+        ssh_failures=ssh_failed_attempts(),
+        arp_devices=lan_arp_scan()
     )
 
 @app.route("/groups")
@@ -2805,6 +2939,35 @@ def delete_quick_link(lid):
     links = get_quick_links()
     links = [l for l in links if l["id"] != lid]
     save_quick_links(links)
+    return redirect("/dashboard")
+
+@app.route("/action/notes/add", methods=["POST"])
+def add_note():
+    if not logged():
+        return redirect("/")
+    title = request.form.get("title", "").strip()
+    content = request.form.get("content", "").strip()
+    if title and content:
+        notes = get_secure_notes()
+        new_id = str(int(time.time()))
+        notes.append({"id": new_id, "title": title, "content": content})
+        save_secure_notes(notes)
+    return redirect("/dashboard")
+
+@app.route("/action/notes/delete/<nid>")
+def delete_note(nid):
+    if not logged():
+        return redirect("/")
+    notes = get_secure_notes()
+    notes = [n for n in notes if n["id"] != nid]
+    save_secure_notes(notes)
+    return redirect("/dashboard")
+
+@app.route("/action/cleanup_cache")
+def cleanup_cache():
+    if not logged():
+        return redirect("/")
+    sh("sudo apt-get clean && sudo rm -rf /tmp/*")
     return redirect("/dashboard")
 
 @app.route("/net")
