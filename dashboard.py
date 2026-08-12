@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v4.0 Cyber-Matrix"
+VERSION = "Dashboard v4.1 Ultra-Modern"
 
 def active_connections():
     # Active network TCP connections count & list
