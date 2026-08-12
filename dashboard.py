@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.0 Cyberpunk Nexus"
+VERSION = "Dashboard v7.1 Cyberpunk Nexus"
 
 def run_custom_command(cmd):
     # Allowed safe diagnostic commands or general execution with timeout
@@ -1669,7 +1669,7 @@ HTML = '''
                     <span>Ping {{ spd.ping if spd is defined else 'N/A' }} ms</span>
                     <span>{{ spd.time if spd is defined else 'Unavailable' }}</span>
                 </div>
-                <button class="btn-speedtest" onclick="fetch('/action/manual_speedtest');showToast('Running Speed Test… result in ~40s')">
+                <button class="btn-speedtest" onclick="runWithProgress('Running Speed Test', 'Measuring download/upload bandwidth (~30s)...', '/dashboard')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>
@@ -2566,13 +2566,13 @@ HTML = '''
                     </svg>
                     Reboot OS
                 </a>
-                <a href="#" class="action-btn update" onclick="fetch('/action/update_system');showToast('System update started… running in background');return false">
+                <a href="javascript:void(0)" class="action-btn update" onclick="runWithProgress('Updating Ubuntu System', 'Running apt update & upgrade in background...', '/dashboard')">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>
                     <span id="upd_label">{{upd}}</span>
                 </a>
-                <a href="#" class="action-btn pihole" onclick="fetch('/action/pihole_update');showToast('Updating Pi-hole… running in background');return false">
+                <a href="javascript:void(0)" class="action-btn pihole" onclick="runWithProgress('Updating Pi-hole', 'Updating Pi-hole blocklists & software...', '/dashboard')">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>
