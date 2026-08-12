@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.0 Multi-Tabbed Pro Edition"
+VERSION = "Dashboard v8.1 Tabbed Pro Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
