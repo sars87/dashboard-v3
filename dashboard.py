@@ -8,7 +8,21 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v5.0 Cyber-Futuristic"
+VERSION = "Dashboard v6.0 Ultimate"
+
+def open_ports_scan():
+    # Scan listening ports on server
+    out = sh("ss -tulpn 2>/dev/null | head -n 15")
+    return out if out else "Open ports list unavailable."
+
+def systemd_services_list():
+    # List key services status
+    services = ["ssh", "ufw", "cron", "networking", "rsyslog"]
+    results = []
+    for s in services:
+        status = sh(f"systemctl is-active {s} 2>/dev/null")
+        results.append({"name": s, "active": status == "active"})
+    return results
 
 def active_connections():
     # Active network TCP connections count & list
@@ -2127,6 +2141,54 @@ HTML = '''
             </div>
         </div>
 
+        <!-- v6.0 Ultimate Module: Active Systemd Service Manager & Open Ports -->
+        <section class="section">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon indigo" style="background:rgba(99,102,241,0.1); color:#818cf8;">
+                        <svg viewBox="0 0 24 24" fill="#818cf8" width="20" height="20">
+                            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Active System Services & Ports Manager (إدارة الخدمات والمنافذ الحية)</h2>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); padding:6px 12px; border-radius:8px; border:1px solid var(--border);">
+                    <b>Kernel:</b> <code>{{kernel_info}}</code>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
+                <!-- Systemd Services Controller -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 12px 0; font-size:14px; color:var(--text);">⚙️ System Services Control (التحكم بخدمات السيرفر)</h3>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        {% for s in sys_services %}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:8px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:{{ 'var(--success)' if s.active else 'var(--danger)' }}; box-shadow:0 0 8px {{ 'var(--success-glow)' if s.active else 'var(--danger-glow)' }};"></span>
+                                <span style="font-size:13px; font-weight:600; color:var(--text); font-family:monospace;">{{ s.name }}</span>
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <a href="javascript:void(0)" onclick="runWithProgress('Restarting {{s.name}}', 'Executing systemctl restart {{s.name}}...', '/action/service/{{s.name}}/restart')" style="font-size:10px; background:rgba(79,140,255,0.15); color:var(--primary); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Restart</a>
+                                {% if s.active %}
+                                <a href="javascript:void(0)" onclick="runWithProgress('Stopping {{s.name}}', 'Executing systemctl stop {{s.name}}...', '/action/service/{{s.name}}/stop')" style="font-size:10px; background:rgba(239,68,68,0.15); color:var(--danger); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Stop</a>
+                                {% else %}
+                                <a href="javascript:void(0)" onclick="runWithProgress('Starting {{s.name}}', 'Executing systemctl start {{s.name}}...', '/action/service/{{s.name}}/start')" style="font-size:10px; background:rgba(16,185,129,0.15); color:var(--success); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Start</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Open Listening Ports -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🔓 Open Listening Ports (المنافذ المفتوحة)</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#38bdf8; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:220px; font-family:monospace;">{{open_ports}}</pre>
+                </div>
+            </div>
+        </section>
+
         <!-- v4.0 Cyber-Matrix Module: Advanced System Diagnostics & Heavy Processes -->
         <section class="section">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -3006,7 +3068,9 @@ def dashboard():
         arp_devices=lan_arp_scan(),
         net_conns=active_connections(),
         top_procs=top_heavy_processes(),
-        kernel_info=system_kernel_info()
+        kernel_info=system_kernel_info(),
+        open_ports=open_ports_scan(),
+        sys_services=systemd_services_list()
     )
 
 @app.route("/groups")
@@ -3064,6 +3128,14 @@ def cleanup_cache():
     if not logged():
         return redirect("/")
     sh("sudo apt-get clean && sudo rm -rf /tmp/*")
+    return redirect("/dashboard")
+
+@app.route("/action/service/<sname>/<action>")
+def control_service(sname, action):
+    if not logged():
+        return redirect("/")
+    if action in ["start", "stop", "restart"]:
+        sh(f"sudo systemctl {action} {sname} 2>/dev/null")
     return redirect("/dashboard")
 
 @app.route("/net")
