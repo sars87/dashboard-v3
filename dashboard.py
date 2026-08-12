@@ -8,7 +8,20 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v3.0 Ultimate"
+VERSION = "Dashboard v4.0 Cyber-Matrix"
+
+def active_connections():
+    # Active network TCP connections count & list
+    out = sh("ss -tunp 2>/dev/null | head -n 15")
+    return out if out else "Active connections unavailable."
+
+def top_heavy_processes():
+    # Top 5 CPU/RAM consuming processes
+    out = sh("ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%cpu | head -n 6")
+    return out if out else "Process list unavailable."
+
+def system_kernel_info():
+    return sh("uname -r -o && uptime -p")
 
 NOTES_FILE = "/tmp/dashboard_secure_notes.json"
 
@@ -2114,6 +2127,37 @@ HTML = '''
             </div>
         </div>
 
+        <!-- v4.0 Cyber-Matrix Module: Advanced System Diagnostics & Heavy Processes -->
+        <section class="section">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon cyan" style="background:rgba(6,182,212,0.1); color:#06b6d4;">
+                        <svg viewBox="0 0 24 24" fill="#06b6d4" width="20" height="20">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Cyber Matrix Diagnostics & Process Intelligence (مراقب العمليات والتشخيص المتقدم)</h2>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); padding:6px 12px; border-radius:8px; border:1px solid var(--border);">
+                    <b>Kernel & Uptime:</b> <code>{{kernel_info}}</code>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-top:16px;">
+                <!-- Top Heavy Processes -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">⚡ Top CPU/RAM Processes (أعلى العمليات استهلاكاً)</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#38bdf8; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px; font-family:monospace;">{{top_procs}}</pre>
+                </div>
+
+                <!-- Active Network TCP Connections -->
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🌐 Active TCP Connections (الاتصالات النشطة)</h3>
+                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#34d399; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px; font-family:monospace;">{{net_conns}}</pre>
+                </div>
+            </div>
+        </section>
+
         <!-- v3.0 Ultimate Module 2: LAN ARP Network Scanner & Security Monitor -->
         <section class="section">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -2910,7 +2954,10 @@ def dashboard():
         secure_notes=get_secure_notes(),
         fw_status=firewall_status(),
         ssh_failures=ssh_failed_attempts(),
-        arp_devices=lan_arp_scan()
+        arp_devices=lan_arp_scan(),
+        net_conns=active_connections(),
+        top_procs=top_heavy_processes(),
+        kernel_info=system_kernel_info()
     )
 
 @app.route("/groups")
