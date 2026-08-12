@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v4.1 Ultra-Modern"
+VERSION = "Dashboard v5.0 Cyber-Futuristic"
 
 def active_connections():
     # Active network TCP connections count & list
@@ -2685,6 +2685,55 @@ HTML = '''
         setInterval(pollNet, 1500); pollNet();
     </script>
     <script>lucide.createIcons();</script>
+
+    <!-- Loading Progress Overlay -->
+    <div id="loadingOverlay" style="display:none; position:fixed; inset:0; background:rgba(6,10,19,0.9); backdrop-filter:blur(16px); z-index:99999; align-items:center; justify-content:center; flex-direction:column; padding:24px;">
+        <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:24px; padding:36px; width:100%; max-width:440px; box-shadow:0 30px 70px rgba(0,0,0,0.8); text-align:center;">
+            <div style="width:50px; height:50px; border-radius:50%; background:rgba(79,140,255,0.15); display:flex; align-items:center; justify-content:center; margin:0 auto 16px auto; color:var(--primary);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+            </div>
+            <h3 id="loaderTitle" style="font-size:18px; font-weight:700; color:var(--text); margin-bottom:8px;">Processing Operation...</h3>
+            <p id="loaderDesc" style="font-size:13px; color:var(--text-secondary); margin-bottom:20px;">Please wait while the server executes the requested action.</p>
+            <div style="width:100%; height:8px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:hidden; margin-bottom:12px;">
+                <div id="loaderFill" style="width:0%; height:100%; background:linear-gradient(90deg, var(--primary), var(--cyan)); border-radius:99px; transition:width 0.4s ease; box-shadow:0 0 15px var(--primary-glow);"></div>
+            </div>
+            <div id="loaderStatus" style="font-size:12px; color:var(--cyan); font-family:monospace;">Initializing (0%)...</div>
+        </div>
+    </div>
+
+    <script>
+        function runWithProgress(title, desc, url) {
+            const overlay = document.getElementById('loadingOverlay');
+            const lTitle = document.getElementById('loaderTitle');
+            const lDesc = document.getElementById('loaderDesc');
+            const lFill = document.getElementById('loaderFill');
+            const lStatus = document.getElementById('loaderStatus');
+
+            lTitle.innerText = title;
+            lDesc.innerText = desc;
+            overlay.style.display = 'flex';
+            lFill.style.width = '15%';
+            lStatus.innerText = 'Initializing... (15%)';
+
+            let progress = 15;
+            const interval = setInterval(() => {
+                if (progress < 88) {
+                    progress += Math.floor(Math.random() * 12) + 5;
+                    lFill.style.width = progress + '%';
+                    lStatus.innerText = 'Executing server task... (' + progress + '%)';
+                }
+            }, 220);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                lFill.style.width = '100%';
+                lStatus.innerText = 'Complete! Loading result... (100%)';
+                setTimeout(() => {
+                    window.location.href = url;
+                }, 400);
+            }, 1300);
+        }
+    </script>
 </body>
 </html>
 '''
