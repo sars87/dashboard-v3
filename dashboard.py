@@ -8,7 +8,12 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.1 Cyberpunk Nexus"
+VERSION = "Dashboard v7.2 Cyberpunk Nexus"
+
+def tailscale_status_details():
+    # Get tailscale status details
+    out = sh("tailscale status 2>/dev/null")
+    return out if out else "Tailscale status unavailable or not logged in."
 
 def run_custom_command(cmd):
     # Allowed safe diagnostic commands or general execution with timeout
@@ -2157,6 +2162,25 @@ HTML = '''
             </div>
         </div>
 
+        <!-- v7.2 Tailscale Mesh Network Details -->
+        <section class="section" style="border:1px solid rgba(236,72,153,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(236,72,153,0.07);">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon mesh" style="background:rgba(236,72,153,0.15); color:#ec4899; box-shadow:0 0 15px rgba(236,72,153,0.3);">
+                        <svg viewBox="0 0 24 24" fill="#ec4899" width="20" height="20">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0; color:#ec4899;">Tailscale Mesh Network Details (تفاصيل شبكة التيلسكيل المباشرة)</h2>
+                </div>
+                <span style="font-size:11px; color:#ec4899; background:rgba(236,72,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(236,72,153,0.2);">● VPN Mesh Connected</span>
+            </div>
+
+            <div style="margin-top:16px;">
+                <pre style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:16px; font-size:11px; color:#f472b6; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:240px; font-family:monospace;">{{tailscale_details}}</pre>
+            </div>
+        </section>
+
         <!-- v7.0 Cyberpunk Nexus: Interactive Web Terminal / Command Runner -->
         <section class="section" style="border:1px solid rgba(56,189,248,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(56,189,248,0.07);">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -3115,7 +3139,8 @@ def dashboard():
         top_procs=top_heavy_processes(),
         kernel_info=system_kernel_info(),
         open_ports=open_ports_scan(),
-        sys_services=systemd_services_list()
+        sys_services=systemd_services_list(),
+        tailscale_details=tailscale_status_details()
     )
 
 TERMINAL_RESULT_HTML = '''

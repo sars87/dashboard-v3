@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v7.1 Deployment Installer (`deploy-v3`)
+# Dashboard v7.2 Cyberpunk Nexus Deployment Installer (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -21,7 +21,6 @@ fi
 
 echo "==> [3/4] Installing / updating dashboard script..."
 if [ -f "$TARGET_DIR/dashboard.py" ]; then
-    # Determine target python script location
     USER_HOME=$(eval echo ~$(whoami))
     sudo cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
     sudo chown $(whoami):$(whoami) "$USER_HOME/dashboard.py"
@@ -35,5 +34,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
 
 echo "=========================================================="
-echo "✨ Dashboard updated & deployed successfully!"
+echo "✨ Dashboard v7.2 deployed & updated successfully!"
 echo "=========================================================="
