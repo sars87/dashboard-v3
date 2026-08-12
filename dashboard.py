@@ -8,7 +8,32 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v1.9.2"
+VERSION = "Dashboard v2.0"
+QUICK_LINKS_FILE = "/tmp/dashboard_quick_links.json"
+
+def get_quick_links():
+    default_links = [
+        {"id": "1", "name": "Pi-hole Admin", "url": "http://192.168.100.3/admin", "icon": "shield"},
+        {"id": "2", "name": "Jellyfin Media", "url": "http://192.168.100.3:8096", "icon": "play"},
+        {"id": "3", "name": "Router Gateway", "url": "http://192.168.100.1", "icon": "wifi"},
+        {"id": "4", "name": "GitHub Repo", "url": "https://github.com/sars87/dashboard-v2", "icon": "git"}
+    ]
+    try:
+        if os.path.exists(QUICK_LINKS_FILE):
+            with open(QUICK_LINKS_FILE, "r") as f:
+                data = json.load(f)
+                if data:
+                    return data
+    except:
+        pass
+    return default_links
+
+def save_quick_links(links):
+    try:
+        with open(QUICK_LINKS_FILE, "w") as f:
+            json.dump(links, f)
+    except:
+        pass
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -1996,6 +2021,61 @@ HTML = '''
             </div>
         </section>
 
+        <!-- Quick Links Launcher Section -->
+        <section class="section">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon blue">
+                        <svg viewBox="0 0 24 24" fill="#3b82f6">
+                            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0;">Custom Quick Links & Services Launcher</h2>
+                </div>
+                <button type="button" onclick="document.getElementById('quickLinkModal').style.display='flex'" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--primary); color:white; border-color:var(--primary); cursor:pointer;">
+                    + Add Quick Link
+                </button>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px; margin-top:16px;">
+                {% for l in quick_links %}
+                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; transition:all 0.2s ease; position:relative;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-weight:700; color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">{{l.name}}</span>
+                            <a href="/action/quick_link/delete/{{l.id}}" onclick="saveScroll()" title="Delete Link" style="color:var(--danger); font-size:12px; text-decoration:none; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">✕</a>
+                        </div>
+                        <div style="font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:12px;" title="{{l.url}}">{{l.url}}</div>
+                    </div>
+                    <a href="{{l.url}}" target="_blank" onclick="saveScroll()" style="display:inline-block; text-align:center; background:var(--primary); color:white; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">
+                        Launch Service ↗
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Add Quick Link Modal -->
+        <div id="quickLinkModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:400px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Add Quick Link (إضافة رابط سريع)</h3>
+                <form method="POST" action="/action/quick_link/add" onsubmit="saveScroll()">
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Service Name (اسم الخدمة):</label>
+                        <input type="text" name="name" placeholder="e.g. Pi-hole, Plex, Router" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
+                    </div>
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Service URL (رابط الموقع):</label>
+                        <input type="url" name="url" placeholder="http://192.168.1.100:8080" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                        <button type="button" onclick="document.getElementById('quickLinkModal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:8px 16px; border-radius:8px; cursor:pointer;">Cancel</button>
+                        <button type="submit" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Add Link</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <!-- Cron Jobs Section -->
         <section class="section">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -2695,7 +2775,8 @@ def dashboard():
         spdhist=speed_history(),
         bat=battery(),
         docker=docker_containers(),
-        cronjobs=cron_jobs()
+        cronjobs=cron_jobs(),
+        quick_links=get_quick_links()
     )
 
 @app.route("/groups")
@@ -2703,6 +2784,28 @@ def groups():
     if not logged():
         return redirect("/")
     return render_template_string(GROUPS_HTML, groups=pihole_groups())
+
+@app.route("/action/quick_link/add", methods=["POST"])
+def add_quick_link():
+    if not logged():
+        return redirect("/")
+    name = request.form.get("name", "").strip()
+    url = request.form.get("url", "").strip()
+    if name and url:
+        links = get_quick_links()
+        new_id = str(int(time.time()))
+        links.append({"id": new_id, "name": name, "url": url, "icon": "link"})
+        save_quick_links(links)
+    return redirect("/dashboard")
+
+@app.route("/action/quick_link/delete/<lid>")
+def delete_quick_link(lid):
+    if not logged():
+        return redirect("/")
+    links = get_quick_links()
+    links = [l for l in links if l["id"] != lid]
+    save_quick_links(links)
+    return redirect("/dashboard")
 
 @app.route("/net")
 def net():
