@@ -8,7 +8,27 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.3 Ultra-Clean Edition"
+VERSION = "Dashboard v7.4 Ultra-Clean Edition"
+
+def parse_tailscale_nodes():
+    out = sh("tailscale status 2>/dev/null")
+    nodes = []
+    if not out:
+        return nodes
+    lines = out.splitlines()
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 4 and not line.startswith("Logged"):
+            # Typical format: IP DNS Host OS Status
+            # e.g. 100.x.x.x hostname user linux active
+            nodes.append({
+                "ip": parts[0],
+                "host": parts[1] if len(parts) > 1 else "",
+                "user": parts[2] if len(parts) > 2 else "",
+                "os": parts[3] if len(parts) > 3 else "",
+                "status": parts[4] if len(parts) > 4 else ("active" if "active" in line else "connected")
+            })
+    return nodes
 
 def tailscale_status_details():
     # Get tailscale status details
@@ -2162,7 +2182,7 @@ HTML = '''
             </div>
         </div>
 
-        <!-- v7.2 Tailscale Mesh Network Details -->
+        <!-- v7.4 Tailscale Structured Table & Active Controls -->
         <section class="section" style="border:1px solid rgba(236,72,153,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(236,72,153,0.07);">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
@@ -2171,13 +2191,45 @@ HTML = '''
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
                         </svg>
                     </div>
-                    <h2 class="section-title" style="margin:0; color:#ec4899;">Tailscale Mesh Network Details (تفاصيل شبكة التيلسكيل المباشرة)</h2>
+                    <h2 class="section-title" style="margin:0; color:#ec4899;">Tailscale Mesh Network Control & Nodes (إدارة وتحكم شبكة التيلسكيل)</h2>
                 </div>
-                <span style="font-size:11px; color:#ec4899; background:rgba(236,72,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(236,72,153,0.2);">● VPN Mesh Connected</span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <a href="javascript:void(0)" onclick="runWithProgress('Starting Tailscale', 'Activating Tailscale daemon & up...', '/dashboard')" style="background:rgba(52,211,153,0.15); color:#34d399; border:1px solid rgba(52,211,153,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">▶ Connect (Up)</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Restarting Tailscale', 'Reconnecting Tailscale mesh network...', '/action/tailscale_fix')" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">🔄 Reconnect</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Stopping Tailscale', 'Stopping Tailscale service...', '/action/tailscale_off')" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">⏹ Disconnect</a>
+                </div>
             </div>
 
             <div style="margin-top:16px;">
-                <pre style="background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:16px; font-size:11px; color:#f472b6; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:240px; font-family:monospace;">{{tailscale_details}}</pre>
+                <div style="overflow-x:auto;">
+                    <table class="query-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); text-align:left; color:var(--text-muted);">
+                                <th style="padding:10px;">IP Address</th>
+                                <th style="padding:10px;">Hostname / Device</th>
+                                <th style="padding:10px;">User</th>
+                                <th style="padding:10px;">OS</th>
+                                <th style="padding:10px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for n in tailscale_nodes %}
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                                <td style="padding:10px; font-family:monospace; color:#f472b6;">{{n.ip}}</td>
+                                <td style="padding:10px; font-weight:600; color:var(--text);">{{n.host}}</td>
+                                <td style="padding:10px; color:var(--text-secondary);">{{n.user}}</td>
+                                <td style="padding:10px; color:var(--text-muted);">{{n.os}}</td>
+                                <td style="padding:10px;">
+                                    <span style="background:rgba(52,211,153,0.15); color:#34d399; padding:3px 8px; border-radius:6px; font-size:11px; border:1px solid rgba(52,211,153,0.3);">{{n.status}}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not tailscale_nodes %}
+                            <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:20px;">Tailscale nodes data unavailable or service offline.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -3140,7 +3192,8 @@ def dashboard():
         kernel_info=system_kernel_info(),
         open_ports=open_ports_scan(),
         sys_services=systemd_services_list(),
-        tailscale_details=tailscale_status_details()
+        tailscale_details=tailscale_status_details(),
+        tailscale_nodes=parse_tailscale_nodes()
     )
 
 TERMINAL_RESULT_HTML = '''
@@ -3407,9 +3460,9 @@ def action(name):
         "tg_off": "systemctl stop tg-control.timer",
         "jellyfin_on": "systemctl start jellyfin filebrowser",
         "jellyfin_off": "systemctl stop jellyfin filebrowser",
-        "tailscale_on": "systemctl start tailscaled",
+        "tailscale_on": "systemctl start tailscaled && tailscale up",
         "tailscale_off": "systemctl stop tailscaled",
-            "tailscale_fix": "systemctl restart tailscaled && tailscale up",
+        "tailscale_fix": "systemctl restart tailscaled && tailscale up",
         "restart_all": "systemctl restart openvpn-client@proton tg-control.timer tailscaled jellyfin filebrowser",
         "update_system": "bash -c 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef upgrade' > /tmp/update.log 2>&1",
         "pihole_update": "pihole -up -y > /tmp/pihole_update.log 2>&1",
