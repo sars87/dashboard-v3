@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.4 Ultra-Clean Edition"
+VERSION = "Dashboard v7.5 Live Performance Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -2181,6 +2181,52 @@ HTML = '''
                 </form>
             </div>
         </div>
+
+        <!-- v7.5 Live System Performance Monitor -->
+        <section class="section" style="border:1px solid rgba(79,140,255,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(79,140,255,0.07);">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="section-icon blue" style="background:rgba(79,140,255,0.15); color:var(--primary-light); box-shadow:0 0 15px rgba(79,140,255,0.3);">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="margin:0; color:var(--primary-light);">Live System Performance Monitor (مراقب أداء النظام الحي)</h2>
+                </div>
+                <span style="font-size:11px; color:var(--success); background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Live Auto-Updating</span>
+            </div>
+
+            <div class="health-grid" style="margin-top:16px;">
+                <div class="health-card" style="--bar-color: var(--primary);">
+                    <div class="health-label">CPU Usage (المعالج)</div>
+                    <div class="health-value" id="perf_cpu">{{ cpu }}%</div>
+                    <div class="health-bar">
+                        <div class="health-fill" id="bar_cpu" style="width: {{ cpu }}%;"></div>
+                    </div>
+                </div>
+                <div class="health-card" style="--bar-color: var(--success);">
+                    <div class="health-label">RAM Usage (الذاكرة العشوائية)</div>
+                    <div class="health-value" id="perf_ram">{{ ram }}%</div>
+                    <div class="health-bar">
+                        <div class="health-fill" id="bar_ram" style="width: {{ ram }}%;"></div>
+                    </div>
+                </div>
+                <div class="health-card" style="--bar-color: var(--warning);">
+                    <div class="health-label">Disk Usage (مساحة التخزين)</div>
+                    <div class="health-value" id="perf_disk">{{ disk }}%</div>
+                    <div class="health-bar">
+                        <div class="health-fill" id="bar_disk" style="width: {{ disk }}%;"></div>
+                    </div>
+                </div>
+                <div class="health-card" style="--bar-color: var(--danger);">
+                    <div class="health-label">Core Temperature (درجة الحرارة)</div>
+                    <div class="health-value" id="perf_temp">{{ temp }}°C</div>
+                    <div class="health-bar">
+                        <div class="health-fill temp" id="bar_temp" style="width: {{ temp }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <!-- v7.4 Tailscale Structured Table & Active Controls -->
         <section class="section" style="border:1px solid rgba(236,72,153,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(236,72,153,0.07);">
