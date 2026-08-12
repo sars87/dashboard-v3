@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.2 Cyberpunk Nexus"
+VERSION = "Dashboard v7.3 Ultra-Clean Edition"
 
 def tailscale_status_details():
     # Get tailscale status details
