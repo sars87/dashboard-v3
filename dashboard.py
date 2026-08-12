@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v7.5 Live Performance Edition"
+VERSION = "Dashboard v8.0 Multi-Tabbed Pro Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -1652,7 +1652,71 @@ HTML = '''
         @media (prefers-reduced-motion: reduce) {
             *, body::before { animation: none !important; }
         }
+
+        /* v8.0 Multi-Tabbed Navigation Styles */
+        .tabs-nav {
+            display: flex;
+            gap: 10px;
+            margin: 24px 0 32px 0;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .tab-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        .tab-btn:hover {
+            border-color: var(--primary);
+            color: var(--text);
+            background: rgba(79,140,255,0.05);
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--primary), #1d4ed8);
+            border-color: var(--primary);
+            color: white;
+            box-shadow: 0 0 20px rgba(79,140,255,0.4);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
+    <script>
+        function switchTab(tabId, btnElement) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            if(btnElement) btnElement.classList.add('active');
+            localStorage.setItem('active_dashboard_tab', tabId);
+        }
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTab = localStorage.getItem('active_dashboard_tab');
+            if(savedTab && document.getElementById(savedTab)) {
+                const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(savedTab));
+                switchTab(savedTab, btn);
+            }
+        });
+    </script>
 </head>
 <body>
     <div id="refreshbar"></div>
