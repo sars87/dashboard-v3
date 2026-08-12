@@ -1,21 +1,39 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v7.1 Cyberpunk Nexus Deployment Installer (`deploy-v3`)
+# Dashboard v7.1 Deployment Installer (`deploy-v3`)
 # ==========================================================
-echo "==> [1/3] Pulling latest Dashboard v7.1 from GitHub..."
-cd /home/saif/deployments/dashboard-v3 2>/dev/null || {
-    mkdir -p /home/saif/deployments
-    git clone https://github.com/sars87/dashboard-v3.git /home/saif/deployments/dashboard-v3
-    cd /home/saif/deployments/dashboard-v3
-}
-git pull origin main
+set -e
 
-echo "==> [2/3] Updating active dashboard script..."
-sudo cp /home/saif/deployments/dashboard-v3/dashboard.py /home/saif/dashboard.py
+echo "==> [1/4] Preparing deployment directory..."
+TARGET_DIR="/home/$(whoami)/deployments/dashboard-v3"
+mkdir -p "$TARGET_DIR"
 
-echo "==> [3/3] Restarting dashboard systemd service..."
-sudo systemctl restart dashboard.service
+if [ -d "$TARGET_DIR/.git" ]; then
+    echo "==> [2/4] Pulling latest changes from GitHub (sars87/dashboard-v3)..."
+    cd "$TARGET_DIR"
+    git reset --hard HEAD
+    git pull origin main
+else
+    echo "==> [2/4] Cloning repository from GitHub (sars87/dashboard-v3)..."
+    git clone https://github.com/sars87/dashboard-v3.git "$TARGET_DIR"
+    cd "$TARGET_DIR"
+fi
+
+echo "==> [3/4] Installing / updating dashboard script..."
+if [ -f "$TARGET_DIR/dashboard.py" ]; then
+    # Determine target python script location
+    USER_HOME=$(eval echo ~$(whoami))
+    sudo cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
+    sudo chown $(whoami):$(whoami) "$USER_HOME/dashboard.py"
+    echo "==> Dashboard script successfully installed to $USER_HOME/dashboard.py"
+else
+    echo "Error: dashboard.py not found in repository!"
+    exit 1
+fi
+
+echo "==> [4/4] Restarting dashboard systemd service..."
+sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
 
 echo "=========================================================="
-echo "✨ Dashboard v7.1 deployed & updated successfully!"
+echo "✨ Dashboard updated & deployed successfully!"
 echo "=========================================================="
