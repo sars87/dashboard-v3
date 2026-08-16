@@ -2750,6 +2750,13 @@ HTML = '''
                 }
             }
 
+            function fmtB(b){
+                if(b < 1024) return b + ' B';
+                if(b < 1024*1024) return (b/1024).toFixed(2) + ' KB';
+                if(b < 1024*1024*1024) return (b/(1024*1024)).toFixed(2) + ' MB';
+                return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+            }
+
             function renderTrafficReports(reports){
                 const tbody = document.getElementById('traffic_report_tbody');
                 const fromDate = document.getElementById('traffic_date_from').value;
@@ -2762,16 +2769,20 @@ HTML = '''
                 });
 
                 if(filtered.length > 0){
-                    let html = '';
+                    let sumRx = 0, sumTx = 0;
                     filtered.forEach(r => {
-                        html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                            <td style="padding:8px; font-weight:600; color:var(--primary-light);">${r.date}</td>
-                            <td style="padding:8px; color:#22d3ee;">${r.rx}</td>
-                            <td style="padding:8px; color:#60a5fa;">${r.tx}</td>
-                            <td style="padding:8px; color:#34d399; font-weight:700;">${r.combined}</td>
-                        </tr>`;
+                        sumRx += (r.raw_rx !== undefined ? r.raw_rx : 0);
+                        sumTx += (r.raw_tx !== undefined ? r.raw_tx : 0);
                     });
-                    tbody.innerHTML = html;
+                    let sumCombined = sumRx + sumTx;
+                    let periodLabel = (fromDate || toDate) ? ((fromDate || 'Start') + ' → (To ' + (toDate || 'Now') + ')') : 'Total All Time (جميع الأوقات)';
+
+                    tbody.innerHTML = `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px 8px; font-weight:600; color:var(--primary-light);">📊 Period Sum (${filtered.length} days): ${periodLabel}</td>
+                        <td style="padding:10px 8px; color:#22d3ee; font-weight:700;">${fmtB(sumRx)}</td>
+                        <td style="padding:10px 8px; color:#60a5fa; font-weight:700;">${fmtB(sumTx)}</td>
+                        <td style="padding:10px 8px; color:#34d399; font-weight:700;">${fmtB(sumCombined)}</td>
+                    </tr>`;
                 } else {
                     tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:16px; color:var(--text-muted);">No traffic consumption records found for the selected date range.</td></tr>`;
                 }
@@ -3625,6 +3636,8 @@ def traffic_report():
             tx = d.get("tx", 0)
             rows.append({
                 "date": date_str,
+                "raw_rx": rx,
+                "raw_tx": tx,
                 "rx": fmt_bytes(rx),
                 "tx": fmt_bytes(tx),
                 "combined": fmt_bytes(rx + tx)
