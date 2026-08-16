@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.9 Cron Logs Edition"
+VERSION = "Dashboard v8.10 Date Traffic Report Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -235,6 +235,7 @@ def network_traffic_quota():
                     interfaces.append({"iface": name, "rx": fmt_bytes(rx), "tx": fmt_bytes(tx)})
     except:
         pass
+    log_traffic_history(total_rx, total_tx)
     return {
         "total_rx": fmt_bytes(total_rx),
         "total_tx": fmt_bytes(total_tx),
@@ -243,6 +244,27 @@ def network_traffic_quota():
         "raw_tx": total_tx,
         "interfaces": interfaces
     }
+
+TRAFFIC_HISTORY_FILE = "/home/saif/.dashboard_traffic_history.json"
+
+def log_traffic_history(total_rx, total_tx):
+    try:
+        import datetime
+        today = datetime.date.today().isoformat()
+        history = {}
+        if os.path.exists(TRAFFIC_HISTORY_FILE):
+            with open(TRAFFIC_HISTORY_FILE, "r") as f:
+                history = json.load(f)
+        current = history.get(today, {"rx": 0, "tx": 0})
+        if total_rx >= current.get("rx", 0):
+            current["rx"] = total_rx
+        if total_tx >= current.get("tx", 0):
+            current["tx"] = total_tx
+        history[today] = current
+        with open(TRAFFIC_HISTORY_FILE, "w") as f:
+            json.dump(history, f)
+    except Exception:
+        pass
 
 def svc(name):
     x = sh(f"systemctl is-active {name}")
@@ -1852,14 +1874,19 @@ HTML = '''
 
         <!-- Network Quota & Total Traffic Tracker -->
         <section class="section" style="padding:16px 20px;">
-            <div class="section-header" style="margin-bottom:12px;">
-                <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;width:32px;height:32px;font-size:16px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="width:16px;height:16px;">
-                        <circle cx="12" cy="12" r="9"></circle>
-                        <path d="M9 12l2 2 4-4"></path>
-                    </svg>
+            <div class="section-header" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;width:32px;height:32px;font-size:16px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="width:16px;height:16px;">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <path d="M9 12l2 2 4-4"></path>
+                        </svg>
+                    </div>
+                    <h2 class="section-title" style="font-size:15px; margin:0;">Network Quota & Traffic Tracker</h2>
                 </div>
-                <h2 class="section-title" style="font-size:15px;">Network Quota & Traffic Tracker</h2>
+                <button type="button" onclick="fetchTrafficReport()" class="btn-service" style="background:rgba(6,182,212,0.15); color:#22d3ee; border:1px solid rgba(6,182,212,0.3); padding:6px 12px; font-size:11px; cursor:pointer; font-weight:600;">
+                    📅 Date Traffic Report
+                </button>
             </div>
             <div class="health-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
                 <div class="health-card" style="--bar-color: #06b6d4; padding:12px 14px;">
@@ -2640,6 +2667,34 @@ HTML = '''
             </div>
         </div>
 
+        <!-- Date Traffic Report Modal -->
+        <div id="trafficReportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:600px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 style="margin:0; color:var(--text); font-size:16px;">📅 Network Traffic Report by Date (تقرير استهلاك الشبكة حسب التاريخ)</h3>
+                    <button type="button" onclick="document.getElementById('trafficReportModal').style.display='none'" style="background:transparent; border:none; color:var(--text-secondary); font-size:18px; cursor:pointer;">✕</button>
+                </div>
+                <div style="max-height:350px; overflow-y:auto;">
+                    <table class="sthist" style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); text-align:left; color:var(--text-muted);">
+                                <th style="padding:8px;">Date (التاريخ)</th>
+                                <th style="padding:8px;">Download (RX)</th>
+                                <th style="padding:8px;">Upload (TX)</th>
+                                <th style="padding:8px;">Combined (الإجمالي)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="traffic_report_tbody">
+                            <tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">Loading traffic history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                    <button type="button" onclick="document.getElementById('trafficReportModal').style.display='none'" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Edit Cron Modal / Form Container -->
         <div id="cronModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
             <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:450px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
@@ -2677,6 +2732,33 @@ HTML = '''
                     pre.textContent = data.logs || 'No execution logs found.';
                 } catch(e) {
                     pre.textContent = 'Failed to load cron execution logs.';
+                }
+            }
+
+            async function fetchTrafficReport(){
+                const modal = document.getElementById('trafficReportModal');
+                const tbody = document.getElementById('traffic_report_tbody');
+                modal.style.display = 'flex';
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">Loading traffic history...</td></tr>`;
+                try {
+                    const res = await fetch('/action/traffic_report', {headers:{'X-Requested-With':'XMLHttpRequest'}});
+                    const data = await res.json();
+                    if(data.reports && data.reports.length > 0){
+                        let html = '';
+                        data.reports.forEach(r => {
+                            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                                <td style="padding:10px 8px; font-weight:600; color:var(--primary-light);">${r.date}</td>
+                                <td style="padding:10px 8px; color:#22d3ee;">${r.rx}</td>
+                                <td style="padding:10px 8px; color:#60a5fa;">${r.tx}</td>
+                                <td style="padding:10px 8px; color:#34d399; font-weight:700;">${r.combined}</td>
+                            </tr>`;
+                        });
+                        tbody.innerHTML = html;
+                    } else {
+                        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">No traffic consumption records found for prior dates yet. Traffic will be logged daily.</td></tr>`;
+                    }
+                } catch(e) {
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#ef4444;">Failed to load traffic report.</td></tr>`;
                 }
             }
             function closeCronEdit() {
@@ -3499,6 +3581,30 @@ def cron_logs():
     res = subprocess.run("journalctl -u cron -n 60 --no-pager 2>/dev/null || grep CRON /var/log/syslog -n 50 2>/dev/null || echo 'Cron system journal logs unavailable.'", shell=True, capture_output=True, text=True)
     logs = res.stdout.strip() or "No recent cron log entries found."
     return json.dumps({"logs": logs}), 200, {"Content-Type": "application/json"}
+
+@app.route("/action/traffic_report")
+def traffic_report():
+    if not logged():
+        return json.dumps({"error": "Unauthorized"}), 401, {"Content-Type": "application/json"}
+    try:
+        history = {}
+        if os.path.exists(TRAFFIC_HISTORY_FILE):
+            with open(TRAFFIC_HISTORY_FILE, "r") as f:
+                history = json.load(f)
+        rows = []
+        for date_str in sorted(history.keys(), reverse=True):
+            d = history[date_str]
+            rx = d.get("rx", 0)
+            tx = d.get("tx", 0)
+            rows.append({
+                "date": date_str,
+                "rx": fmt_bytes(rx),
+                "tx": fmt_bytes(tx),
+                "combined": fmt_bytes(rx + tx)
+            })
+        return json.dumps({"reports": rows}), 200, {"Content-Type": "application/json"}
+    except Exception as e:
+        return json.dumps({"reports": [], "error": str(e)}), 200, {"Content-Type": "application/json"}
 
 @app.route("/action/web_deploy", methods=["POST"])
 def web_deploy():
