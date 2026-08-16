@@ -239,6 +239,8 @@ def network_traffic_quota():
         "total_rx": fmt_bytes(total_rx),
         "total_tx": fmt_bytes(total_tx),
         "total_combined": fmt_bytes(total_rx + total_tx),
+        "raw_rx": total_rx,
+        "raw_tx": total_tx,
         "interfaces": interfaces
     }
 
@@ -1849,31 +1851,28 @@ HTML = '''
         </section>
 
         <!-- Network Quota & Total Traffic Tracker -->
-        <section class="section">
-            <div class="section-header">
-                <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="width:20px;height:20px;">
+        <section class="section" style="padding:16px 20px;">
+            <div class="section-header" style="margin-bottom:12px;">
+                <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;width:32px;height:32px;font-size:16px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="width:16px;height:16px;">
                         <circle cx="12" cy="12" r="9"></circle>
                         <path d="M9 12l2 2 4-4"></path>
                     </svg>
                 </div>
-                <h2 class="section-title">Network Quota & Total Traffic Tracker</h2>
+                <h2 class="section-title" style="font-size:15px;">Network Quota & Traffic Tracker</h2>
             </div>
-            <div class="health-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
-                <div class="health-card" style="--bar-color: #06b6d4;">
-                    <div class="health-label">&#8595; Total Download (RX)</div>
-                    <div class="health-value" style="color:#22d3ee; font-size:24px;">{{ net_quota.total_rx }}</div>
-                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Cumulative since boot</div>
+            <div class="health-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                <div class="health-card" style="--bar-color: #06b6d4; padding:12px 14px;">
+                    <div class="health-label" style="font-size:11px;">&#8595; Total RX</div>
+                    <div class="health-value" id="quota_rx" style="color:#22d3ee; font-size:16px; font-weight:700;">{{ net_quota.total_rx }}</div>
                 </div>
-                <div class="health-card" style="--bar-color: #3b82f6;">
-                    <div class="health-label">&#8593; Total Upload (TX)</div>
-                    <div class="health-value" style="color:#60a5fa; font-size:24px;">{{ net_quota.total_tx }}</div>
-                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Cumulative since boot</div>
+                <div class="health-card" style="--bar-color: #3b82f6; padding:12px 14px;">
+                    <div class="health-label" style="font-size:11px;">&#8593; Total TX</div>
+                    <div class="health-value" id="quota_tx" style="color:#60a5fa; font-size:16px; font-weight:700;">{{ net_quota.total_tx }}</div>
                 </div>
-                <div class="health-card" style="--bar-color: #10b981;">
-                    <div class="health-label">📊 Combined Traffic</div>
-                    <div class="health-value" style="color:#34d399; font-size:24px;">{{ net_quota.total_combined }}</div>
-                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Total network throughput</div>
+                <div class="health-card" style="--bar-color: #10b981; padding:12px 14px;">
+                    <div class="health-label" style="font-size:11px;">📊 Combined</div>
+                    <div class="health-value" id="quota_total" style="color:#34d399; font-size:16px; font-weight:700;">{{ net_quota.total_combined }}</div>
                 </div>
             </div>
         </section>
@@ -3138,6 +3137,20 @@ HTML = '''
                         let tx = Math.max(0, (d.tx - _lastNet.tx)/dt);
                         document.getElementById('bw_down').textContent = fmtRate(rx);
                         document.getElementById('bw_up').textContent = fmtRate(tx);
+                        // Instant client-side quota accumulation update
+                        if (!window._cumRx) window._cumRx = {{ net_quota.raw_rx if net_quota.raw_rx is defined else 0 }};
+                        if (!window._cumTx) window._cumTx = {{ net_quota.raw_tx if net_quota.raw_tx is defined else 0 }};
+                        window._cumRx += rx * dt;
+                        window._cumTx += tx * dt;
+                        const fmtB = b => {
+                            if (b < 1024) return b.toFixed(0) + ' B';
+                            if (b < 1024*1024) return (b/1024).toFixed(2) + ' KB';
+                            if (b < 1024*1024*1024) return (b/(1024*1024)).toFixed(2) + ' MB';
+                            return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+                        };
+                        document.getElementById('quota_rx').textContent = fmtB(window._cumRx);
+                        document.getElementById('quota_tx').textContent = fmtB(window._cumTx);
+                        document.getElementById('quota_total').textContent = fmtB(window._cumRx + window._cumTx);
                         const ifel = document.getElementById('bw_iface'); if(ifel) ifel.textContent = d.iface;
                         _rxH.push(rx); _txH.push(tx);
                         if(_rxH.length > _NPTS) _rxH.shift();
