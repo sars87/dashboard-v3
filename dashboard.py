@@ -1962,9 +1962,10 @@ HTML = '''
                     <div class="service-status">
                         <span class="status-badge {{'on' if bot=='active' else 'off'}}" id="st_bot">{{bot}}</span>
                     </div>
-                    <div class="service-actions">
-                        <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot', this); return false;">Start</a>
-                        <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot', this); return false;">Stop</a>
+                    <div class="service-actions" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px;">
+                        <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px;">Start</a>
+                        <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px;">Stop</a>
+                        <a href="/action/tg_restart" class="btn-service" onclick="runAction('/action/tg_restart', 'Restarting Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3);">Restart</a>
                     </div>
                 </div>
 
@@ -1999,9 +2000,10 @@ HTML = '''
                     <div class="service-status">
                         <span class="status-badge {{'on' if tailscale=='active' else 'off'}}" id="st_ts">{{tailscale}}</span>
                     </div>
-                    <div class="service-actions">
-                        <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale', this); return false;">Start</a>
-                        <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale', this); return false;">Stop</a>
+                    <div class="service-actions" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px;">
+                        <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale', this); return false;" style="padding:6px 2px; font-size:11px;">Start</a>
+                        <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale', this); return false;" style="padding:6px 2px; font-size:11px;">Stop</a>
+                        <a href="/action/tailscale_fix" class="btn-service" onclick="runAction('/action/tailscale_fix', 'Restarting Tailscale', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3);">Restart</a>
                     </div>
                 </div>
             </div>
@@ -3652,6 +3654,7 @@ def action(name):
         "vpn_off": "systemctl stop openvpn-client@proton",
         "tg_on": "systemctl start tg-control.timer",
         "tg_off": "systemctl stop tg-control.timer",
+        "tg_restart": "systemctl restart tg-control.timer",
         "jellyfin_on": "systemctl start jellyfin",
         "jellyfin_off": "systemctl stop jellyfin",
         "ftp_on": "systemctl start filebrowser",
