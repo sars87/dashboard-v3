@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.8 Streamlined Edition"
+VERSION = "Dashboard v8.9 Cron Logs Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -2532,6 +2532,9 @@ HTML = '''
                                         <button type="button" onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
                                             Edit Time
                                         </button>
+                                        <button type="button" onclick="fetchCronLogs()" class="btn-service" style="background:rgba(16,185,129,0.1); color:#10b981; border:1px solid rgba(16,185,129,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                            📋 View Logs
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -2623,6 +2626,20 @@ HTML = '''
             }
         </script>
 
+        <!-- Cron Logs Modal -->
+        <div id="cronLogsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:650px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 style="margin:0; color:var(--text); font-size:16px;">📋 Cron Job Execution Logs (سجل تنفيذ المهام المجدولة)</h3>
+                    <button type="button" onclick="document.getElementById('cronLogsModal').style.display='none'" style="background:transparent; border:none; color:var(--text-secondary); font-size:18px; cursor:pointer;">✕</button>
+                </div>
+                <pre id="cron_logs_content" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:#38bdf8; overflow-x:auto; max-height:350px; margin-bottom:16px; font-family:monospace; white-space:pre-wrap;">Loading logs...</pre>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button type="button" onclick="document.getElementById('cronLogsModal').style.display='none'" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Edit Cron Modal / Form Container -->
         <div id="cronModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
             <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:450px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
@@ -2648,6 +2665,19 @@ HTML = '''
                 document.getElementById('edit_line_idx').value = lineIdx;
                 document.getElementById('edit_schedule').value = sched;
                 document.getElementById('cronModal').style.display = 'flex';
+            }
+            async function fetchCronLogs(){
+                const modal = document.getElementById('cronLogsModal');
+                const pre = document.getElementById('cron_logs_content');
+                modal.style.display = 'flex';
+                pre.textContent = 'Loading execution logs from server system journal...';
+                try {
+                    const res = await fetch('/action/cron_logs', {headers:{'X-Requested-With':'XMLHttpRequest'}});
+                    const data = await res.json();
+                    pre.textContent = data.logs || 'No execution logs found.';
+                } catch(e) {
+                    pre.textContent = 'Failed to load cron execution logs.';
+                }
             }
             function closeCronEdit() {
                 document.getElementById('cronModal').style.display = 'none';
@@ -3461,6 +3491,16 @@ def web_terminal():
     cmd = request.form.get("command", "").strip()
     result = run_custom_command(cmd)
     return render_template_string(TERMINAL_RESULT_HTML, version=VERSION, command=cmd, result=result)
+
+@app.route("/action/cron_logs")
+def cron_logs():
+    if not logged():
+        return jsonify({"logs": "Unauthorized"}), 401
+    res = subprocess.run("journalctl -u cron -n 60 --no-pager 2>/dev/null || grep CRON /var/log/syslog -n 50 2>/dev/null || echo 'Cron system journal logs unavailable.'", shell=True, capture_output=True, text=True)
+    logs = res.stdout.strip() or "No recent cron log entries found."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"logs": logs})
+    return logs
 
 @app.route("/action/web_deploy", methods=["POST"])
 def web_deploy():
