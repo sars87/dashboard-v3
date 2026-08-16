@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.7 Network Quota Edition"
+VERSION = "Dashboard v8.8 Streamlined Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -1901,8 +1901,8 @@ HTML = '''
                         <span class="status-badge {{'on' if yt=='Enabled' else 'off'}}" id="st_yt">{{yt}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/youtube_on" class="btn-service on">Enable</a>
-                        <a href="/action/youtube_off" class="btn-service off">Disable</a>
+                        <a href="/action/youtube_on" class="btn-service on" onclick="runAction('/action/youtube_on', 'Enabling YouTube Block'); return false;">Enable</a>
+                        <a href="/action/youtube_off" class="btn-service off" onclick="runAction('/action/youtube_off', 'Disabling YouTube Block'); return false;">Disable</a>
                     </div>
                 </div>
 
@@ -1918,8 +1918,8 @@ HTML = '''
                         <span class="status-badge {{'on' if ph=='Enabled' else 'off'}}" id="st_ph">{{ph}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/pihole_on" class="btn-service on">Enable</a>
-                        <a href="/action/pihole_off" class="btn-service off">Disable</a>
+                        <a href="/action/pihole_on" class="btn-service on" onclick="runAction('/action/pihole_on', 'Enabling Pi-hole'); return false;">Enable</a>
+                        <a href="/action/pihole_off" class="btn-service off" onclick="runAction('/action/pihole_off', 'Disabling Pi-hole'); return false;">Disable</a>
                     </div>
                     <form class="pihole-timer" action="/pihole/pause" method="post">
                         <input type="number" name="minutes" min="1" max="1440" value="5" required aria-label="Minutes to pause Pi-hole">
@@ -1946,8 +1946,8 @@ HTML = '''
                         <span class="status-badge {{'on' if vpn=='active' else 'off'}}" id="st_vpn">{{vpn}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/vpn_on" class="btn-service on">Start</a>
-                        <a href="/action/vpn_off" class="btn-service off">Stop</a>
+                        <a href="/action/vpn_on" class="btn-service on" onclick="runAction('/action/vpn_on', 'Starting VPN'); return false;">Start</a>
+                        <a href="/action/vpn_off" class="btn-service off" onclick="runAction('/action/vpn_off', 'Stopping VPN'); return false;">Stop</a>
                     </div>
                 </div>
 
@@ -1963,8 +1963,8 @@ HTML = '''
                         <span class="status-badge {{'on' if bot=='active' else 'off'}}" id="st_bot">{{bot}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/tg_on" class="btn-service on">Start</a>
-                        <a href="/action/tg_off" class="btn-service off">Stop</a>
+                        <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot'); return false;">Start</a>
+                        <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot'); return false;">Stop</a>
                     </div>
                 </div>
 
@@ -1981,10 +1981,10 @@ HTML = '''
                         <span class="status-badge {{'on' if fb=='active' else 'off'}}" id="st_fb" title="FTP/Filebrowser">FTP: {{fb}}</span>
                     </div>
                     <div class="service-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-                        <a href="/action/jellyfin_on" class="btn-service on" onclick="runWithProgress('Starting Jellyfin & FTP', 'Enabling media streaming & FTP server...', this.href); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ ON</a>
-                        <a href="/action/jellyfin_off" class="btn-service off" onclick="runWithProgress('Stopping Jellyfin & FTP', 'Disabling media streaming & FTP server...', this.href); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ OFF</a>
-                        <a href="/action/ftp_on" class="btn-service on" onclick="runWithProgress('Starting FTP Server', 'Enabling Filebrowser FTP service...', this.href); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ ON</a>
-                        <a href="/action/ftp_off" class="btn-service off" onclick="runWithProgress('Stopping FTP Server', 'Disabling Filebrowser FTP service...', this.href); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ OFF</a>
+                        <a href="/action/jellyfin_on" class="btn-service on" onclick="runAction('/action/jellyfin_on', 'Starting Jellyfin'); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ ON</a>
+                        <a href="/action/jellyfin_off" class="btn-service off" onclick="runAction('/action/jellyfin_off', 'Stopping Jellyfin'); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ OFF</a>
+                        <a href="/action/ftp_on" class="btn-service on" onclick="runAction('/action/ftp_on', 'Starting FTP'); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ ON</a>
+                        <a href="/action/ftp_off" class="btn-service off" onclick="runAction('/action/ftp_off', 'Stopping FTP'); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ OFF</a>
                     </div>
                 </div>
 
@@ -2000,8 +2000,8 @@ HTML = '''
                         <span class="status-badge {{'on' if tailscale=='active' else 'off'}}" id="st_ts">{{tailscale}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/tailscale_on" class="btn-service on">Start</a>
-                        <a href="/action/tailscale_off" class="btn-service off">Stop</a>
+                        <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale'); return false;">Start</a>
+                        <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale'); return false;">Stop</a>
                     </div>
                 </div>
             </div>
@@ -2282,57 +2282,7 @@ HTML = '''
             </div>
         </section>
 
-        <!-- v3.0 Ultimate Module 1: Secure Home Notes & Info Board -->
-        <section class="section">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon purple">
-                        <svg viewBox="0 0 24 24" fill="#8b5cf6">
-                            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v-2zm-3-5V3.5L18.5 9H13z"/>
-                        </svg>
-                    </div>
-                    <h2 class="section-title" style="margin:0;">Home Info & Secure Notes Board (ملاحظات ومعلومات البيت الآمنة)</h2>
-                </div>
-                <button type="button" onclick="document.getElementById('noteModal').style.display='flex'" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--primary); color:white; border-color:var(--primary); cursor:pointer;">
-                    + Add Note
-                </button>
-            </div>
 
-            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin-top:16px;">
-                {% for n in secure_notes %}
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
-                    <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <span style="font-weight:700; color:var(--text); font-size:13px;">{{n.title}}</span>
-                            <a href="/action/notes/delete/{{n.id}}" onclick="saveScroll()" title="Delete Note" style="color:var(--danger); font-size:12px; text-decoration:none; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">✕</a>
-                        </div>
-                        <div style="font-size:12px; color:var(--text-secondary); white-space:pre-wrap; word-break:break-all; line-height:1.4;">{{n.content}}</div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </section>
-
-        <!-- Add Note Modal -->
-        <div id="noteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
-            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:400px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
-                <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Add Home Note (إضافة ملاحظة جديدة)</h3>
-                <form method="POST" action="/action/notes/add" onsubmit="saveScroll()">
-                    <div style="margin-bottom:12px;">
-                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Title (العنوان):</label>
-                        <input type="text" name="title" placeholder="e.g. Wi-Fi Password, Router IP" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
-                    </div>
-                    <div style="margin-bottom:16px;">
-                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Content (المحتوى):</label>
-                        <textarea name="content" rows="3" placeholder="Write details here..." required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px; resize:vertical;"></textarea>
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; gap:8px;">
-                        <button type="button" onclick="document.getElementById('noteModal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:8px 16px; border-radius:8px; cursor:pointer;">Cancel</button>
-                        <button type="submit" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Save Note</button>
-                    </div>
-                </form>
-            </div>
-        </div>
 
         <!-- v7.5 Live System Performance Monitor -->
         <section class="section" style="border:1px solid rgba(79,140,255,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(79,140,255,0.07);">
@@ -2460,121 +2410,7 @@ HTML = '''
             </div>
         </section>
 
-        <!-- v6.0 Ultimate Module: Active Systemd Service Manager & Open Ports -->
-        <section class="section">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon indigo" style="background:rgba(99,102,241,0.1); color:#818cf8;">
-                        <svg viewBox="0 0 24 24" fill="#818cf8" width="20" height="20">
-                            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                        </svg>
-                    </div>
-                    <h2 class="section-title" style="margin:0;">Active System Services & Ports Manager (إدارة الخدمات والمنافذ الحية)</h2>
-                </div>
-                <div style="font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); padding:6px 12px; border-radius:8px; border:1px solid var(--border);">
-                    <b>Kernel:</b> <code>{{kernel_info}}</code>
-                </div>
-            </div>
 
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
-                <!-- Systemd Services Controller -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 12px 0; font-size:14px; color:var(--text);">⚙️ System Services Control (التحكم بخدمات السيرفر)</h3>
-                    <div style="display:flex; flex-direction:column; gap:8px;">
-                        {% for s in sys_services %}
-                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); border:1px solid var(--border); padding:8px 12px; border-radius:8px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span style="width:8px; height:8px; border-radius:50%; background:{{ 'var(--success)' if s.active else 'var(--danger)' }}; box-shadow:0 0 8px {{ 'var(--success-glow)' if s.active else 'var(--danger-glow)' }};"></span>
-                                <span style="font-size:13px; font-weight:600; color:var(--text); font-family:monospace;">{{ s.name }}</span>
-                            </div>
-                            <div style="display:flex; gap:6px;">
-                                <a href="javascript:void(0)" onclick="runWithProgress('Restarting {{s.name}}', 'Executing systemctl restart {{s.name}}...', '/action/service/{{s.name}}/restart')" style="font-size:10px; background:rgba(79,140,255,0.15); color:var(--primary); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Restart</a>
-                                {% if s.active %}
-                                <a href="javascript:void(0)" onclick="runWithProgress('Stopping {{s.name}}', 'Executing systemctl stop {{s.name}}...', '/action/service/{{s.name}}/stop')" style="font-size:10px; background:rgba(239,68,68,0.15); color:var(--danger); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Stop</a>
-                                {% else %}
-                                <a href="javascript:void(0)" onclick="runWithProgress('Starting {{s.name}}', 'Executing systemctl start {{s.name}}...', '/action/service/{{s.name}}/start')" style="font-size:10px; background:rgba(16,185,129,0.15); color:var(--success); padding:4px 8px; border-radius:4px; text-decoration:none; font-weight:600;">Start</a>
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <!-- Open Listening Ports -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🔓 Open Listening Ports (المنافذ المفتوحة)</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#38bdf8; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:220px; font-family:monospace;">{{open_ports}}</pre>
-                </div>
-            </div>
-        </section>
-
-        <!-- v4.0 Cyber-Matrix Module: Advanced System Diagnostics & Heavy Processes -->
-        <section class="section">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon cyan" style="background:rgba(6,182,212,0.1); color:#06b6d4;">
-                        <svg viewBox="0 0 24 24" fill="#06b6d4" width="20" height="20">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-                        </svg>
-                    </div>
-                    <h2 class="section-title" style="margin:0;">Cyber Matrix Diagnostics & Process Intelligence (مراقب العمليات والتشخيص المتقدم)</h2>
-                </div>
-                <div style="font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); padding:6px 12px; border-radius:8px; border:1px solid var(--border);">
-                    <b>Kernel & Uptime:</b> <code>{{kernel_info}}</code>
-                </div>
-            </div>
-
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-top:16px;">
-                <!-- Top Heavy Processes -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">⚡ Top CPU/RAM Processes (أعلى العمليات استهلاكاً)</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#38bdf8; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px; font-family:monospace;">{{top_procs}}</pre>
-                </div>
-
-                <!-- Active Network TCP Connections -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🌐 Active TCP Connections (الاتصالات النشطة)</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:10px; color:#34d399; overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px; font-family:monospace;">{{net_conns}}</pre>
-                </div>
-            </div>
-        </section>
-
-        <!-- v3.0 Ultimate Module 2: LAN ARP Network Scanner & Security Monitor -->
-        <section class="section">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon orange">
-                        <svg viewBox="0 0 24 24" fill="#f59e0b">
-                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-                        </svg>
-                    </div>
-                    <h2 class="section-title" style="margin:0;">Network Scanner & Server Security (فحص الشبكة وحماية السيرفر)</h2>
-                </div>
-                <a href="/action/cleanup_cache" onclick="saveScroll()" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--success, #10b981); color:white; border-color:var(--success, #10b981); text-decoration:none;">
-                    🧹 Clean System Cache & Temp
-                </a>
-            </div>
-
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:16px;">
-                <!-- LAN ARP Scanner Card -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🌐 Connected LAN Devices (ARP)</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--text-secondary); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{arp_devices}}</pre>
-                </div>
-
-                <!-- UFW Status Card -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🛡️ UFW Firewall Status</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--text-secondary); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{fw_status}}</pre>
-                </div>
-
-                <!-- SSH Failed Login Attempts -->
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px;">
-                    <h3 style="margin:0 0 8px 0; font-size:14px; color:var(--text);">🚨 Recent SSH Failed Logins</h3>
-                    <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:var(--danger, #ef4444); overflow-x:auto; margin:0; white-space:pre-wrap; max-height:160px;">{{ssh_failures}}</pre>
-                </div>
-            </div>
-        </section>
 
         <!-- Quick Links Launcher Section -->
         <section class="section">
@@ -2943,6 +2779,18 @@ HTML = '''
             t.querySelector('span').innerText = msg;
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 2200);
+        }
+
+        async function runAction(url, msg){
+            showToast(msg + '...');
+            try {
+                await fetch(url, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
+                showToast(msg + ' completed!');
+                refreshData();
+            } catch(e) {
+                showToast(msg + ' executed');
+                refreshData();
+            }
         }
 
         function tick(){

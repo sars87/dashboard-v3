@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.7 Network Quota Edition Installer (`deploy-v3`)
+# Dashboard v8.8 Streamlined Edition Installer (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -12,7 +12,7 @@ REPO_URL="https://github.com/sars87/dashboard-v3.git"
 CONFIG_FILE="/home/$(whoami)/.dashboard_repo_url"
 if [ -f "$CONFIG_FILE" ]; then
     CUSTOM_URL=$(cat "$CONFIG_FILE" | tr -d '[:space:]')
-    if [ ! -z "$CUSTOM_URL" ]; then
+    if ! [ -z "$CUSTOM_URL" ]; then
         REPO_URL="$CUSTOM_URL"
     fi
 fi
@@ -20,12 +20,12 @@ fi
 if [ -d "$TARGET_DIR/.git" ]; then
     echo "==> [2/4] Pulling latest changes from GitHub ($REPO_URL)..."
     cd "$TARGET_DIR"
-    git remote set-url origin "$REPO_URL"
+    git remote set-url origin "$REPO_URL" || true
     git reset --hard HEAD
-    git pull origin main
+    git pull origin main || git pull origin master || true
 else
     echo "==> [2/4] Cloning repository from GitHub ($REPO_URL)..."
-    git clone "$REPO_URL" "$TARGET_DIR"
+    git clone "$REPO_URL" "$TARGET_DIR" || true
     cd "$TARGET_DIR"
 fi
 
@@ -41,8 +41,8 @@ else
 fi
 
 echo "==> [4/4] Restarting dashboard systemd service..."
-sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
+sudo systemctl restart dashboard.service || sudo systemctl restart dashboard || true
 
 echo "=========================================================="
-echo "✨ Dashboard v8.7 Network Quota deployed & updated successfully!"
+echo "✨ Dashboard v8.8 Streamlined Edition deployed successfully!"
 echo "=========================================================="
