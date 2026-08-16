@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.6 Web Deployer Edition"
+VERSION = "Dashboard v8.7 Network Quota Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -205,6 +205,42 @@ def net_counters():
     except:
         pass
     return best
+
+def fmt_bytes(b):
+    if b < 1024:
+        return f"{b} B"
+    elif b < 1024 * 1024:
+        return f"{b / 1024:.2f} KB"
+    elif b < 1024 * 1024 * 1024:
+        return f"{b / (1024 * 1024):.2f} MB"
+    else:
+        return f"{b / (1024 * 1024 * 1024):.2f} GB"
+
+def network_traffic_quota():
+    total_rx = 0
+    total_tx = 0
+    interfaces = []
+    try:
+        with open("/proc/net/dev") as f:
+            for line in f.readlines()[2:]:
+                name, _, data = line.partition(":")
+                name = name.strip()
+                if name == "lo":
+                    continue
+                p = data.split()
+                if len(p) >= 9:
+                    rx, tx = int(p[0]), int(p[8])
+                    total_rx += rx
+                    total_tx += tx
+                    interfaces.append({"iface": name, "rx": fmt_bytes(rx), "tx": fmt_bytes(tx)})
+    except:
+        pass
+    return {
+        "total_rx": fmt_bytes(total_rx),
+        "total_tx": fmt_bytes(total_tx),
+        "total_combined": fmt_bytes(total_rx + total_tx),
+        "interfaces": interfaces
+    }
 
 def svc(name):
     x = sh(f"systemctl is-active {name}")
@@ -1812,6 +1848,36 @@ HTML = '''
             </div>
         </section>
 
+        <!-- Network Quota & Total Traffic Tracker -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="width:20px;height:20px;">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M9 12l2 2 4-4"></path>
+                    </svg>
+                </div>
+                <h2 class="section-title">Network Quota & Total Traffic Tracker</h2>
+            </div>
+            <div class="health-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                <div class="health-card" style="--bar-color: #06b6d4;">
+                    <div class="health-label">&#8595; Total Download (RX)</div>
+                    <div class="health-value" style="color:#22d3ee; font-size:24px;">{{ net_quota.total_rx }}</div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Cumulative since boot</div>
+                </div>
+                <div class="health-card" style="--bar-color: #3b82f6;">
+                    <div class="health-label">&#8593; Total Upload (TX)</div>
+                    <div class="health-value" style="color:#60a5fa; font-size:24px;">{{ net_quota.total_tx }}</div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Cumulative since boot</div>
+                </div>
+                <div class="health-card" style="--bar-color: #10b981;">
+                    <div class="health-label">📊 Combined Traffic</div>
+                    <div class="health-value" style="color:#34d399; font-size:24px;">{{ net_quota.total_combined }}</div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Total network throughput</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Service Controls -->
         <section class="section">
             <div class="section-header">
@@ -3412,7 +3478,8 @@ def dashboard():
         sys_services=systemd_services_list(),
         tailscale_details=tailscale_status_details(),
         tailscale_nodes=parse_tailscale_nodes(),
-        repo_url=get_repo_url()
+        repo_url=get_repo_url(),
+        net_quota=network_traffic_quota()
     )
 
 TERMINAL_RESULT_HTML = '''

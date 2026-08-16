@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.6 Web Deployer Edition Installer (`deploy-v3`)
+# Dashboard v8.7 Network Quota Edition Installer (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -44,5 +44,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
 
 echo "=========================================================="
-echo "✨ Dashboard v8.6 deployed & updated successfully!"
+echo "✨ Dashboard v8.7 Network Quota deployed & updated successfully!"
 echo "=========================================================="
