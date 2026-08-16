@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.3 Inline AJAX Speedtest Edition"
+VERSION = "Dashboard v8.4 Pro Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -2925,7 +2925,7 @@ HTML = '''
             spMeta.innerHTML = '<span>Running speedtest-cli... Please wait</span><span>Measuring bandwidth</span>';
 
             try {
-                const res = await fetch('/action/manual_speedtest', {method:'POST'});
+                const res = await fetch('/action/manual_speedtest', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}});
                 if(!res.ok) throw new Error('Speed test failed');
                 
                 // Poll or wait for result update
@@ -3601,7 +3601,7 @@ def docker_action(action, container_id):
             pass
     return redirect("/dashboard")
 
-@app.route("/action/<path:name>")
+@app.route("/action/<path:name>", methods=["GET", "POST"])
 def action(name):
     if not logged():
         return redirect("/")
@@ -3648,6 +3648,8 @@ def action(name):
             subprocess.Popen("setsid " + full, shell=True)
         else:
             subprocess.run(full, shell=True)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST":
+        return json.dumps({"status": "success", "action": name}), 200, {"Content-Type": "application/json"}
     return redirect("/dashboard")
 
 if __name__ == "__main__":
