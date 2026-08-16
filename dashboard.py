@@ -1901,8 +1901,8 @@ HTML = '''
                         <span class="status-badge {{'on' if yt=='Enabled' else 'off'}}" id="st_yt">{{yt}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/youtube_on" class="btn-service on" onclick="runAction('/action/youtube_on', 'Enabling YouTube Block'); return false;">Enable</a>
-                        <a href="/action/youtube_off" class="btn-service off" onclick="runAction('/action/youtube_off', 'Disabling YouTube Block'); return false;">Disable</a>
+                        <a href="/action/youtube_on" class="btn-service on" onclick="runAction('/action/youtube_on', 'Enabling YouTube Block', this); return false;">Enable</a>
+                        <a href="/action/youtube_off" class="btn-service off" onclick="runAction('/action/youtube_off', 'Disabling YouTube Block', this); return false;">Disable</a>
                     </div>
                 </div>
 
@@ -1918,8 +1918,8 @@ HTML = '''
                         <span class="status-badge {{'on' if ph=='Enabled' else 'off'}}" id="st_ph">{{ph}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/pihole_on" class="btn-service on" onclick="runAction('/action/pihole_on', 'Enabling Pi-hole'); return false;">Enable</a>
-                        <a href="/action/pihole_off" class="btn-service off" onclick="runAction('/action/pihole_off', 'Disabling Pi-hole'); return false;">Disable</a>
+                        <a href="/action/pihole_on" class="btn-service on" onclick="runAction('/action/pihole_on', 'Enabling Pi-hole', this); return false;">Enable</a>
+                        <a href="/action/pihole_off" class="btn-service off" onclick="runAction('/action/pihole_off', 'Disabling Pi-hole', this); return false;">Disable</a>
                     </div>
                     <form class="pihole-timer" action="/pihole/pause" method="post">
                         <input type="number" name="minutes" min="1" max="1440" value="5" required aria-label="Minutes to pause Pi-hole">
@@ -1946,8 +1946,8 @@ HTML = '''
                         <span class="status-badge {{'on' if vpn=='active' else 'off'}}" id="st_vpn">{{vpn}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/vpn_on" class="btn-service on" onclick="runAction('/action/vpn_on', 'Starting VPN'); return false;">Start</a>
-                        <a href="/action/vpn_off" class="btn-service off" onclick="runAction('/action/vpn_off', 'Stopping VPN'); return false;">Stop</a>
+                        <a href="/action/vpn_on" class="btn-service on" onclick="runAction('/action/vpn_on', 'Starting VPN', this); return false;">Start</a>
+                        <a href="/action/vpn_off" class="btn-service off" onclick="runAction('/action/vpn_off', 'Stopping VPN', this); return false;">Stop</a>
                     </div>
                 </div>
 
@@ -1963,8 +1963,8 @@ HTML = '''
                         <span class="status-badge {{'on' if bot=='active' else 'off'}}" id="st_bot">{{bot}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot'); return false;">Start</a>
-                        <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot'); return false;">Stop</a>
+                        <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot', this); return false;">Start</a>
+                        <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot', this); return false;">Stop</a>
                     </div>
                 </div>
 
@@ -2000,8 +2000,8 @@ HTML = '''
                         <span class="status-badge {{'on' if tailscale=='active' else 'off'}}" id="st_ts">{{tailscale}}</span>
                     </div>
                     <div class="service-actions">
-                        <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale'); return false;">Start</a>
-                        <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale'); return false;">Stop</a>
+                        <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale', this); return false;">Start</a>
+                        <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale', this); return false;">Stop</a>
                     </div>
                 </div>
             </div>
@@ -2186,8 +2186,8 @@ HTML = '''
                             </span>
                         </div>
                         <div class="service-actions">
-                            <a href="/action/group_on/{{g.id}}" class="btn-service on" onclick="runAction('/action/group_on/{{g.id}}', 'Enabling group {{g.name}}'); return false;">ON</a>
-                            <a href="/action/group_off/{{g.id}}" class="btn-service off" onclick="runAction('/action/group_off/{{g.id}}', 'Disabling group {{g.name}}'); return false;">OFF</a>
+                            <a href="/action/group_on/{{g.id}}" class="btn-service on" onclick="runAction('/action/group_on/{{g.id}}', 'Enabling group {{g.name}}', this); return false;">ON</a>
+                            <a href="/action/group_off/{{g.id}}" class="btn-service off" onclick="runAction('/action/group_off/{{g.id}}', 'Disabling group {{g.name}}', this); return false;">OFF</a>
                         </div>
                     </div>
                     {% endfor %}
@@ -2781,7 +2781,14 @@ HTML = '''
             setTimeout(() => t.classList.remove('show'), 2200);
         }
 
-        async function runAction(url, msg){
+        async function runAction(url, msg, btnElement){
+            const btn = btnElement || event.currentTarget;
+            const originalHtml = btn ? btn.innerHTML : '';
+            if(btn){
+                btn.style.opacity = '0.7';
+                btn.style.pointerEvents = 'none';
+                btn.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:4px;vertical-align:middle;"></span>` + originalHtml;
+            }
             showToast(msg + '...');
             try {
                 await fetch(url, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
@@ -2790,6 +2797,12 @@ HTML = '''
             } catch(e) {
                 showToast(msg + ' executed');
                 refreshData();
+            } finally {
+                if(btn){
+                    btn.style.opacity = '1';
+                    btn.style.pointerEvents = 'auto';
+                    btn.innerHTML = originalHtml;
+                }
             }
         }
 
