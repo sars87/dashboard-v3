@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.2 Pro Edition"
+VERSION = "Dashboard v8.3 Inline AJAX Speedtest Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -1758,11 +1758,11 @@ HTML = '''
                     <span>Ping {{ spd.ping if spd is defined else 'N/A' }} ms</span>
                     <span>{{ spd.time if spd is defined else 'Unavailable' }}</span>
                 </div>
-                <button class="btn-speedtest" onclick="runWithProgress('Running Speed Test', 'Measuring download/upload bandwidth (~30s)...', '/action/manual_speedtest')">
+                <button class="btn-speedtest" id="btn_speedtest" onclick="runInlineSpeedTest()">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>
-                    Run Speed Test
+                    <span id="speedtest_btn_text">Run Speed Test</span>
                 </button>
             </div>
         </header>
@@ -2909,6 +2909,64 @@ HTML = '''
                 searchQueries();
             } catch(e) { showToast('Pi-hole action failed'); }
         });
+
+        async function runInlineSpeedTest(){
+            const btn = document.getElementById('btn_speedtest');
+            const btnText = document.getElementById('speedtest_btn_text');
+            const spDown = document.getElementById('sp_down');
+            const spUp = document.getElementById('sp_up');
+            const spMeta = document.getElementById('sp_meta');
+            
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btnText.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite;margin-right:6px;">↻</span> Testing... (~30s)';
+            spDown.innerHTML = '<span style="color:var(--primary-light);font-size:16px;">Testing...</span>';
+            spUp.innerHTML = '<span style="color:var(--success);font-size:16px;">Testing...</span>';
+            spMeta.innerHTML = '<span>Running speedtest-cli... Please wait</span><span>Measuring bandwidth</span>';
+
+            try {
+                const res = await fetch('/action/manual_speedtest', {method:'POST'});
+                if(!res.ok) throw new Error('Speed test failed');
+                
+                // Poll or wait for result update
+                let attempts = 0;
+                const pollInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const r = await fetch('/dashboard', {cache:'no-store'});
+                        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+                        const newDown = doc.getElementById('sp_down').innerHTML;
+                        const newUp = doc.getElementById('sp_up').innerHTML;
+                        const newMeta = doc.getElementById('sp_meta').innerHTML;
+                        
+                        if(!newDown.includes('Testing') && !newDown.includes('N/A') && attempts > 3) {
+                            clearInterval(pollInterval);
+                            spDown.innerHTML = newDown;
+                            spUp.innerHTML = newUp;
+                            spMeta.innerHTML = newMeta;
+                            btn.disabled = false;
+                            btn.style.opacity = '1';
+                            btnText.textContent = 'Run Speed Test';
+                            showToast('Speed test completed successfully!');
+                        } else if(attempts > 35) { // fallback timeout (~35s)
+                            clearInterval(pollInterval);
+                            refreshData();
+                            btn.disabled = false;
+                            btn.style.opacity = '1';
+                            btnText.textContent = 'Run Speed Test';
+                            showToast('Speed test finished');
+                        }
+                    } catch(e) {}
+                }, 3000);
+            } catch(e) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btnText.textContent = 'Run Speed Test';
+                spDown.innerHTML = 'N/A';
+                spUp.innerHTML = 'N/A';
+                showToast('Speed test failed');
+            }
+        }
 
         // Live refresh: update only the dynamic regions every 10s, no full reload
         const REFRESH_IDS = ['hdr_uptime','hdr_status','sp_down','sp_up','sp_meta',
