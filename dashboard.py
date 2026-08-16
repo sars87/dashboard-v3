@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.4 Pro Edition"
+VERSION = "Dashboard v8.5 Media Bot-Style Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -1883,20 +1883,23 @@ HTML = '''
                     </div>
                 </div>
 
-                <!-- Jellyfin -->
+                <!-- Jellyfin & FTP Media Bot Style -->
                 <div class="service-card">
                     <div class="service-icon media">
                         <svg viewBox="0 0 24 24" fill="#f59e0b">
                             <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
                         </svg>
                     </div>
-                    <div class="service-name">Media Server</div>
-                    <div class="service-status">
-                        <span class="status-badge {{'on' if jelly=='active' else 'off'}}" id="st_jelly">{{jelly}}</span>
+                    <div class="service-name">Jellyfin & FTP</div>
+                    <div class="service-status" style="display:flex;gap:6px;justify-content:center;">
+                        <span class="status-badge {{'on' if jelly=='active' else 'off'}}" id="st_jelly" title="Jellyfin">Jelly: {{jelly}}</span>
+                        <span class="status-badge {{'on' if fb=='active' else 'off'}}" id="st_fb" title="FTP/Filebrowser">FTP: {{fb}}</span>
                     </div>
-                    <div class="service-actions">
-                        <a href="/action/jellyfin_on" class="btn-service on">Start</a>
-                        <a href="/action/jellyfin_off" class="btn-service off">Stop</a>
+                    <div class="service-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+                        <a href="/action/jellyfin_on" class="btn-service on" onclick="runWithProgress('Starting Jellyfin & FTP', 'Enabling media streaming & FTP server...', this.href); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ ON</a>
+                        <a href="/action/jellyfin_off" class="btn-service off" onclick="runWithProgress('Stopping Jellyfin & FTP', 'Disabling media streaming & FTP server...', this.href); return false;" style="font-size:11px;padding:6px 2px;">Jelly ⏻ OFF</a>
+                        <a href="/action/ftp_on" class="btn-service on" onclick="runWithProgress('Starting FTP Server', 'Enabling Filebrowser FTP service...', this.href); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ ON</a>
+                        <a href="/action/ftp_off" class="btn-service off" onclick="runWithProgress('Stopping FTP Server', 'Disabling Filebrowser FTP service...', this.href); return false;" style="font-size:11px;padding:6px 2px;">FTP ⏻ OFF</a>
                     </div>
                 </div>
 
@@ -2970,7 +2973,7 @@ HTML = '''
 
         // Live refresh: update only the dynamic regions every 10s, no full reload
         const REFRESH_IDS = ['hdr_uptime','hdr_status','sp_down','sp_up','sp_meta',
-            'st_yt','st_ph','st_vpn','st_bot','st_jelly','st_ts',
+            'st_yt','st_ph','st_vpn','st_bot','st_jelly','st_fb','st_ts',
             'ph_grid','topdom_list','topcli_list','groups_grid','speedhist',
             'res_grid','adult_list','upd_label','dash_footer'];
         async function refreshData(){
@@ -3626,8 +3629,10 @@ def action(name):
         "vpn_off": "systemctl stop openvpn-client@proton",
         "tg_on": "systemctl start tg-control.timer",
         "tg_off": "systemctl stop tg-control.timer",
-        "jellyfin_on": "systemctl start jellyfin filebrowser",
-        "jellyfin_off": "systemctl stop jellyfin filebrowser",
+        "jellyfin_on": "systemctl start jellyfin",
+        "jellyfin_off": "systemctl stop jellyfin",
+        "ftp_on": "systemctl start filebrowser",
+        "ftp_off": "systemctl stop filebrowser",
         "tailscale_on": "systemctl start tailscaled && tailscale up",
         "tailscale_off": "systemctl stop tailscaled",
         "tailscale_fix": "systemctl restart tailscaled && tailscale up",
