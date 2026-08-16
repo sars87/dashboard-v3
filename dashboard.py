@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.1 Tabbed Pro Edition"
+VERSION = "Dashboard v8.2 Pro Edition"
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -1758,7 +1758,7 @@ HTML = '''
                     <span>Ping {{ spd.ping if spd is defined else 'N/A' }} ms</span>
                     <span>{{ spd.time if spd is defined else 'Unavailable' }}</span>
                 </div>
-                <button class="btn-speedtest" onclick="runWithProgress('Running Speed Test', 'Measuring download/upload bandwidth (~30s)...', '/dashboard')">
+                <button class="btn-speedtest" onclick="runWithProgress('Running Speed Test', 'Measuring download/upload bandwidth (~30s)...', '/action/manual_speedtest')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>

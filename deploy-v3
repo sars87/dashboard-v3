@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.1 Tabbed Pro Edition Deployment Installer (`deploy-v3`)
+# Dashboard v8.2 Pro Edition Deployment Installer (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -34,5 +34,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
 
 echo "=========================================================="
-echo "✨ Dashboard v8.1 Tabbed Pro deployed successfully!"
+echo "✨ Dashboard v8.2 deployed & updated successfully!"
 echo "=========================================================="
