@@ -1,5 +1,5 @@
 
-from flask import Flask, request, redirect, session, render_template_string
+from flask import Flask, request, redirect, session, render_template_string, jsonify
 import os, subprocess, socket, re, json, urllib.request, time
 from urllib.parse import urlencode
 
@@ -3495,12 +3495,10 @@ def web_terminal():
 @app.route("/action/cron_logs")
 def cron_logs():
     if not logged():
-        return jsonify({"logs": "Unauthorized"}), 401
+        return json.dumps({"logs": "Unauthorized"}), 401, {"Content-Type": "application/json"}
     res = subprocess.run("journalctl -u cron -n 60 --no-pager 2>/dev/null || grep CRON /var/log/syslog -n 50 2>/dev/null || echo 'Cron system journal logs unavailable.'", shell=True, capture_output=True, text=True)
     logs = res.stdout.strip() or "No recent cron log entries found."
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({"logs": logs})
-    return logs
+    return json.dumps({"logs": logs}), 200, {"Content-Type": "application/json"}
 
 @app.route("/action/web_deploy", methods=["POST"])
 def web_deploy():
