@@ -2186,8 +2186,8 @@ HTML = '''
                             </span>
                         </div>
                         <div class="service-actions">
-                            <a href="/action/group_on/{{g.id}}" class="btn-service on">ON</a>
-                            <a href="/action/group_off/{{g.id}}" class="btn-service off">OFF</a>
+                            <a href="/action/group_on/{{g.id}}" class="btn-service on" onclick="runAction('/action/group_on/{{g.id}}', 'Enabling group {{g.name}}'); return false;">ON</a>
+                            <a href="/action/group_off/{{g.id}}" class="btn-service off" onclick="runAction('/action/group_off/{{g.id}}', 'Disabling group {{g.name}}'); return false;">OFF</a>
                         </div>
                     </div>
                     {% endfor %}
