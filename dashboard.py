@@ -8,7 +8,27 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.5 Media Bot-Style Edition"
+VERSION = "Dashboard v8.6 Web Deployer Edition"
+GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
+DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
+
+def get_repo_url():
+    try:
+        if os.path.exists(GITHUB_REPO_FILE):
+            with open(GITHUB_REPO_FILE, "r") as f:
+                val = f.read().strip()
+                if val:
+                    return val
+    except Exception:
+        pass
+    return DEFAULT_REPO_URL
+
+def set_repo_url(url):
+    try:
+        with open(GITHUB_REPO_FILE, "w") as f:
+            f.write(url.strip())
+    except Exception:
+        pass
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -2731,6 +2751,33 @@ HTML = '''
             }
         </script>
 
+        <!-- Web Deployer Section -->
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon green">
+                    <svg viewBox="0 0 24 24" fill="#10b981">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93s3.05-7.44 7-7.93v15.86zm2-15.86c1.03.52 2 1.34 2.76 2.39H17V5.08l-2.35 1.55c-1.55-1.01-3.4-1.56-5.32-1.56C7.79 5.07 5 7.86 5 11.4s2.79 6.33 6.33 6.33c1.92 0 3.77-.55 5.32-1.56l2.35 1.55v-2.05c-.76 1.05-1.73 1.87-2.76 2.39v.01z"/>
+                    </svg>
+                </div>
+                <h2 class="section-title">Web Deployer & GitHub Repository</h2>
+            </div>
+
+            <div class="games-card" style="padding:16px;">
+                <form action="/action/web_deploy" method="POST" onsubmit="runWithProgress('Deploying Dashboard', 'Pulling code from GitHub repository & restarting service...', this.action); return false;" style="display:flex;flex-direction:column;gap:12px;">
+                    <div>
+                        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">GitHub Repository URL:</label>
+                        <input type="text" name="repo_url" value="{{ repo_url }}" style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:13px;outline:none;" required>
+                    </div>
+                    <button type="submit" class="action-btn restart" style="width:100%;justify-content:center;background:linear-gradient(135deg,#10b981,#059669);border:none;padding:12px;font-weight:700;color:#fff;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.39 2.78 2.96 0 1.65-1.35 3-3 3zM8 13h2.55v3h2.9v-3H16l-4-4-4 4z"/>
+                        </svg>
+                        🚀 Deploy Now from GitHub
+                    </button>
+                </form>
+            </div>
+        </section>
+
         <!-- System Actions -->
         <section class="section">
             <div class="section-header">
@@ -3364,7 +3411,8 @@ def dashboard():
         open_ports=open_ports_scan(),
         sys_services=systemd_services_list(),
         tailscale_details=tailscale_status_details(),
-        tailscale_nodes=parse_tailscale_nodes()
+        tailscale_nodes=parse_tailscale_nodes(),
+        repo_url=get_repo_url()
     )
 
 TERMINAL_RESULT_HTML = '''
@@ -3470,6 +3518,40 @@ def web_terminal():
     cmd = request.form.get("command", "").strip()
     result = run_custom_command(cmd)
     return render_template_string(TERMINAL_RESULT_HTML, version=VERSION, command=cmd, result=result)
+
+@app.route("/action/web_deploy", methods=["POST"])
+def web_deploy():
+    if not logged():
+        return redirect("/")
+    repo_url = request.form.get("repo_url", "").strip()
+    if repo_url:
+        set_repo_url(repo_url)
+    else:
+        repo_url = get_repo_url()
+    
+    deploy_script = f"""
+    set -e
+    TARGET_DIR="/home/$(whoami)/deployments/dashboard-v3"
+    mkdir -p "$TARGET_DIR"
+    if [ -d "$TARGET_DIR/.git" ]; then
+        cd "$TARGET_DIR"
+        git remote set-url origin {repo_url}
+        git reset --hard HEAD
+        git pull origin main || true
+    else
+        git clone {repo_url} "$TARGET_DIR" || true
+        cd "$TARGET_DIR"
+    fi
+    USER_HOME=$(eval echo ~$(whoami))
+    if [ -f "$TARGET_DIR/dashboard.py" ]; then
+        sudo cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
+        sudo chown $(whoami):$(whoami) "$USER_HOME/dashboard.py"
+    fi
+    sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
+    """
+    sh(deploy_script)
+    time.sleep(1)
+    return redirect("/dashboard")
 
 @app.route("/net")
 def net():

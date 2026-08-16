@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.5 Media Bot-Style Edition Deployment Installer (`deploy-v3`)
+# Dashboard v8.6 Web Deployer Edition Installer (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -8,14 +8,24 @@ echo "==> [1/4] Preparing deployment directory..."
 TARGET_DIR="/home/$(whoami)/deployments/dashboard-v3"
 mkdir -p "$TARGET_DIR"
 
+REPO_URL="https://github.com/sars87/dashboard-v3.git"
+CONFIG_FILE="/home/$(whoami)/.dashboard_repo_url"
+if [ -f "$CONFIG_FILE" ]; then
+    CUSTOM_URL=$(cat "$CONFIG_FILE" | tr -d '[:space:]')
+    if [ ! -z "$CUSTOM_URL" ]; then
+        REPO_URL="$CUSTOM_URL"
+    fi
+fi
+
 if [ -d "$TARGET_DIR/.git" ]; then
-    echo "==> [2/4] Pulling latest changes from GitHub (sars87/dashboard-v3)..."
+    echo "==> [2/4] Pulling latest changes from GitHub ($REPO_URL)..."
     cd "$TARGET_DIR"
+    git remote set-url origin "$REPO_URL"
     git reset --hard HEAD
     git pull origin main
 else
-    echo "==> [2/4] Cloning repository from GitHub (sars87/dashboard-v3)..."
-    git clone https://github.com/sars87/dashboard-v3.git "$TARGET_DIR"
+    echo "==> [2/4] Cloning repository from GitHub ($REPO_URL)..."
+    git clone "$REPO_URL" "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
@@ -34,5 +44,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
 
 echo "=========================================================="
-echo "✨ Dashboard v8.5 deployed & updated successfully!"
+echo "✨ Dashboard v8.6 deployed & updated successfully!"
 echo "=========================================================="
