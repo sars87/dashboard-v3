@@ -2828,7 +2828,7 @@ HTML = '''
             </div>
 
             <div class="games-card" style="padding:16px;">
-                <form id="deployForm" onsubmit="event.preventDefault(); const repoUrl = this.querySelector('input[name=\'repo_url\']').value; runWithProgress('Deploying Dashboard', 'Pulling code from GitHub repository & restarting service...', '/action/web_deploy'); fetch('/action/web_deploy', {method: 'POST', headers: {'Content-Type': 'urlencoded' in window ? '' : 'application/x-www-form-urlencoded'}, body: 'repo_url=' + encodeURIComponent(repoUrl)});" style="display:flex;flex-direction:column;gap:12px;">
+                <form action="/action/web_deploy" method="POST" onsubmit="runWithProgress('Deploying Dashboard', 'Pulling code from GitHub repository & restarting service...', this.action); return true;" style="display:flex;flex-direction:column;gap:12px;">
                     <div>
                         <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">GitHub Repository URL:</label>
                         <input type="text" name="repo_url" value="{{ repo_url }}" style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:13px;outline:none;" required>
