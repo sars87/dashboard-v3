@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.14 Adidas Order Tracker Edition"
+VERSION = "Dashboard v8.15 Circular Gauge Meter Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -1847,25 +1847,7 @@ HTML = '''
             </div>
         </header>
 
-        <!-- Adidas Order Tracking Live Widget -->
-        <section class="section" style="background: linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(59,130,246,0.15) 100%); border: 1px solid rgba(6,182,212,0.3);">
-            <div class="section-header" style="margin-bottom:8px;">
-                <div class="section-icon cyan" style="background:rgba(6,182,212,0.2);color:#06b6d4;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                    </svg>
-                </div>
-                <div style="flex:1;">
-                    <h2 class="section-title" style="font-size:15px; color:#22d3ee; margin:0;">📦 Adidas Order Tracking (تتبع طلب أديلاس: GS1315368898)</h2>
-                    <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">Background watchdog checks status every 10 minutes & sends Telegram alerts automatically.</div>
-                </div>
-                <a href="https://adidas.clickpost.in/?waybill=GS1315368898&cm_mmc=AdiEmail_OLC-_-None-_-Shipping_Confirmation.Complete-_-Transactional-_-MainstoryCTA1-_-dv:eCom-_-cn:Order_Related-_-pc:None&cm_mmc1=IN&cm_mmca3=5UG9WTMXIIX84LDI&cm_mmca4=4238240&cm_mmc2=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_reengagement_window=30d&is_retargeting=true&pid=sfmc&c=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_adset=Shipping_Confirmation.Complete&af_ad=MainstoryCTA1&af_channel=Order_Related" target="_blank" class="btn-service" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                    <span>Open Tracking Link ↗</span>
-                </a>
-            </div>
-        </section>
+
 
         <!-- Live Bandwidth -->
         <section class="section">
@@ -1947,13 +1929,29 @@ HTML = '''
                         </tbody>
                     </table>
                 </div>
-                <!-- Traffic Distribution Chart -->
-                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-                        <span>📊 Data Consumption Distribution (توزيع الاستهلاك: تحميل وتنزيل)</span>
-                        <span id="traffic_ratio_label">RX: 0% | TX: 0%</span>
+                <!-- Traffic Distribution Circular Gauge Meter -->
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center;">
+                    <div style="font-size:13px; color:var(--text); font-weight:600; margin-bottom:12px;">🏎️ Data Consumption Speedometer (عداد استهلاك البيانات الدائري)</div>
+                    <div style="display:flex; justify-content:center; align-items:center; gap:20px; flex-wrap:wrap;">
+                        <canvas id="traffic_chart_canvas" width="220" height="130" style="width:220px; height:130px; display:block;"></canvas>
+                        <div style="text-align:left; font-size:12px; display:flex; flex-direction:column; gap:6px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="width:12px; height:12px; background:#06b6d4; border-radius:3px; box-shadow:0 0 8px #06b6d4;"></span>
+                                <span style="color:var(--text-secondary);">Download (RX):</span>
+                                <strong id="gauge_rx_text" style="color:#22d3ee;">0 B (0%)</strong>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="width:12px; height:12px; background:#3b82f6; border-radius:3px; box-shadow:0 0 8px #3b82f6;"></span>
+                                <span style="color:var(--text-secondary);">Upload (TX):</span>
+                                <strong id="gauge_tx_text" style="color:#60a5fa;">0 B (0%)</strong>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; margin-top:4px; border-top:1px solid var(--border); pt:6px;">
+                                <span style="width:12px; height:12px; background:#10b981; border-radius:3px; box-shadow:0 0 8px #10b981;"></span>
+                                <span style="color:var(--text-secondary);">Combined Total:</span>
+                                <strong id="gauge_total_text" style="color:#34d399;">0 B</strong>
+                            </div>
+                        </div>
                     </div>
-                    <canvas id="traffic_chart_canvas" width="600" height="70" style="width:100%; height:70px; display:block;"></canvas>
                 </div>
             </div>
         </section>
@@ -2828,51 +2826,55 @@ HTML = '''
                 const total = rx + tx;
                 const rxPct = total > 0 ? (rx / total) * 100 : 50;
                 const txPct = total > 0 ? (tx / total) * 100 : 50;
-                
-                document.getElementById('traffic_ratio_label').textContent = `RX: ${rxPct.toFixed(1)}% (${fmtB(rx)}) | TX: ${txPct.toFixed(1)}% (${fmtB(tx)})`;
 
-                // Draw background track
-                const barY = 24, barH = 22, barW = w - 40, barX = 20;
-                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                document.getElementById('gauge_rx_text').textContent = `${fmtB(rx)} (${rxPct.toFixed(1)}%)`;
+                document.getElementById('gauge_tx_text').textContent = `${fmtB(tx)} (${txPct.toFixed(1)}%)`;
+                document.getElementById('gauge_total_text').textContent = fmtB(total);
+
+                // Draw semi-circular car speedometer gauge
+                const cx = w / 2, cy = h - 15, radius = 90, lineWidth = 16;
+
+                // Background track (semi-circle from PI to 2*PI)
+                ctx.lineWidth = lineWidth;
+                ctx.lineCap = 'round';
+
+                // Background arc
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
                 ctx.beginPath();
-                ctx.roundRect(barX, barY, barW, barH, 11);
-                ctx.fill();
+                ctx.arc(cx, cy, radius, Math.PI, 2 * Math.PI);
+                ctx.stroke();
 
-                if(total > 0){
-                    const rxWidth = Math.max(12, (rx / total) * barW);
-                    
-                    // RX Bar (Cyan)
-                    ctx.fillStyle = '#06b6d4';
+                if (total > 0) {
+                    // RX arc (Cyan)
+                    const rxAngle = Math.PI + (rx / total) * Math.PI;
+                    ctx.strokeStyle = '#06b6d4';
                     ctx.shadowColor = '#06b6d4';
-                    ctx.shadowBlur = 8;
+                    ctx.shadowBlur = 10;
                     ctx.beginPath();
-                    ctx.roundRect(barX, barY, rxWidth, barH, [11, (rxWidth >= barW - 5)?11:0, (rxWidth >= barW - 5)?11:0, 11]);
-                    ctx.fill();
+                    ctx.arc(cx, cy, radius, Math.PI, rxAngle);
+                    ctx.stroke();
 
-                    // TX Bar (Blue/Emerald)
-                    ctx.fillStyle = '#3b82f6';
-                    ctx.shadowColor = '#3b82f6';
-                    ctx.shadowBlur = 8;
-                    ctx.beginPath();
-                    ctx.roundRect(barX + rxWidth, barY, barW - rxWidth, barH, [0, 11, 11, 0]);
-                    ctx.fill();
+                    // TX arc (Blue)
+                    if (tx > 0) {
+                        ctx.strokeStyle = '#3b82f6';
+                        ctx.shadowColor = '#3b82f6';
+                        ctx.shadowBlur = 10;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, radius, rxAngle, 2 * Math.PI);
+                        ctx.stroke();
+                    }
                     ctx.shadowBlur = 0;
-                } else {
-                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-                    ctx.font = '11px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('No traffic data for chart', w/2, barY + 15);
                 }
 
-                // Legend labels below
-                ctx.fillStyle = '#22d3ee';
-                ctx.font = 'bold 10px sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText(`■ Download (RX): ${fmtB(rx)} (${rxPct.toFixed(1)}%)`, barX, barY + barH + 16);
+                // Center Needle / Value
+                ctx.fillStyle = 'var(--text)';
+                ctx.font = 'bold 15px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(fmtB(total), cx, cy - 25);
 
-                ctx.fillStyle = '#60a5fa';
-                ctx.textAlign = 'right';
-                ctx.fillText(`Upload (TX): ${fmtB(tx)} (${txPct.toFixed(1)}%) ■`, barX + barW, barY + barH + 16);
+                ctx.fillStyle = 'var(--text-muted)';
+                ctx.font = '10px sans-serif';
+                ctx.fillText('Combined Traffic', cx, cy - 10);
             }
 
             function filterTrafficReport(){
