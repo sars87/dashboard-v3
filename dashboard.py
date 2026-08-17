@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.13.1 Fixed Date Filter Edition"
+VERSION = "Dashboard v8.14 Adidas Order Tracker Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -1846,6 +1846,26 @@ HTML = '''
                 </button>
             </div>
         </header>
+
+        <!-- Adidas Order Tracking Live Widget -->
+        <section class="section" style="background: linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(59,130,246,0.15) 100%); border: 1px solid rgba(6,182,212,0.3);">
+            <div class="section-header" style="margin-bottom:8px;">
+                <div class="section-icon cyan" style="background:rgba(6,182,212,0.2);color:#06b6d4;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                </div>
+                <div style="flex:1;">
+                    <h2 class="section-title" style="font-size:15px; color:#22d3ee; margin:0;">📦 Adidas Order Tracking (تتبع طلب أديلاس: GS1315368898)</h2>
+                    <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">Background watchdog checks status every 10 minutes & sends Telegram alerts automatically.</div>
+                </div>
+                <a href="https://adidas.clickpost.in/?waybill=GS1315368898&cm_mmc=AdiEmail_OLC-_-None-_-Shipping_Confirmation.Complete-_-Transactional-_-MainstoryCTA1-_-dv:eCom-_-cn:Order_Related-_-pc:None&cm_mmc1=IN&cm_mmca3=5UG9WTMXIIX84LDI&cm_mmca4=4238240&cm_mmc2=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_reengagement_window=30d&is_retargeting=true&pid=sfmc&c=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_adset=Shipping_Confirmation.Complete&af_ad=MainstoryCTA1&af_channel=Order_Related" target="_blank" class="btn-service" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+                    <span>Open Tracking Link ↗</span>
+                </a>
+            </div>
+        </section>
 
         <!-- Live Bandwidth -->
         <section class="section">

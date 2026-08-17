@@ -73,8 +73,35 @@ def poll_telegram_bot():
     except Exception as e:
         pass
 
+def check_adidas_order():
+    try:
+        state_file = "/home/saif/.adidas_order_state.json"
+        import time
+        now = time.time()
+        # Check every 10 minutes (600 seconds)
+        if os.path.exists(state_file):
+            data = json.load(open(state_file))
+            if now - data.get("last_check", 0) < 600:
+                return
+        
+        tracking_url = "https://adidas.clickpost.in/?waybill=GS1315368898&cm_mmc=AdiEmail_OLC-_-None-_-Shipping_Confirmation.Complete-_-Transactional-_-MainstoryCTA1-_-dv:eCom-_-cn:Order_Related-_-pc:None&cm_mmc1=IN&cm_mmca3=5UG9WTMXIIX84LDI&cm_mmca4=4238240&cm_mmc2=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_reengagement_window=30d&is_retargeting=true&pid=sfmc&c=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_adset=Shipping_Confirmation.Complete&af_ad=MainstoryCTA1&af_channel=Order_Related"
+        
+        # Send update to Telegram every 10 minutes or status check
+        msg = f"📦 Adidas Order Tracking Check (GS1315368898):\nYour order is being tracked live. Check latest status here:\n{tracking_url}"
+        send_telegram(msg)
+        
+        with open(state_file, "w") as f:
+            json.dump({"last_check": now}, f)
+    except Exception as e:
+        print("Adidas order check error:", e)
+
 if __name__ == '__main__':
+    last_order_run = 0
     while True:
         check_services()
         poll_telegram_bot()
+        try:
+            check_adidas_order()
+        except:
+            pass
         time.sleep(15)
