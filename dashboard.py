@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.13 Traffic Distribution Graph Edition"
+VERSION = "Dashboard v8.13.1 Fixed Date Filter Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -2771,8 +2771,9 @@ HTML = '''
                 const toDate = document.getElementById('traffic_date_to').value;
 
                 let filtered = reports.filter(r => {
-                    if(fromDate && r.date < fromDate) return false;
-                    if(toDate && r.date > toDate) return false;
+                    let rDate = r.date.split('T')[0];
+                    if(fromDate && rDate < fromDate) return false;
+                    if(toDate && rDate > toDate) return false;
                     return true;
                 });
 
