@@ -6,13 +6,36 @@ TELEGRAM_CHAT_FILE = "/home/saif/.telegram_chat"
 
 def send_telegram(msg):
     try:
-        if os.path.exists(TELEGRAM_TOKEN_FILE) and os.path.exists(TELEGRAM_CHAT_FILE):
-            token = open(TELEGRAM_TOKEN_FILE).read().strip()
-            chat_id = open(TELEGRAM_CHAT_FILE).read().strip()
-            if token and chat_id:
-                data = json.dumps({'chat_id': chat_id, 'text': msg}).encode()
-                req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data, headers={'Content-Type': 'application/json'})
-                urllib.request.urlopen(req, timeout=5)
+        tokens = []
+        chats = []
+        if os.path.exists(TELEGRAM_TOKEN_FILE):
+            t = open(TELEGRAM_TOKEN_FILE).read().strip()
+            if t: tokens.append(t)
+        # Also support second token file if configured
+        if os.path.exists("/home/saif/.telegram_token_2"):
+            t2 = open("/home/saif/.telegram_token_2").read().strip()
+            if t2: tokens.append(t2)
+        if not tokens and os.path.exists(TELEGRAM_TOKEN_FILE):
+            tokens = [open(TELEGRAM_TOKEN_FILE).read().strip()]
+
+        if os.path.exists(TELEGRAM_CHAT_FILE):
+            c = open(TELEGRAM_CHAT_FILE).read().strip()
+            if c: chats.append(c)
+        if os.path.exists("/home/saif/.telegram_chat_2"):
+            c2 = open("/home/saif/.telegram_chat_2").read().strip()
+            if c2: chats.append(c2)
+        if not chats and os.path.exists(TELEGRAM_CHAT_FILE):
+            chats = [open(TELEGRAM_CHAT_FILE).read().strip()]
+
+        for token in tokens:
+            for chat_id in chats:
+                if token and chat_id:
+                    try:
+                        data = json.dumps({'chat_id': chat_id, 'text': msg}).encode()
+                        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data, headers={'Content-Type': 'application/json'})
+                        urllib.request.urlopen(req, timeout=5)
+                    except:
+                        pass
     except Exception as e:
         print("Telegram error:", e)
 
@@ -78,16 +101,19 @@ def check_adidas_order():
         state_file = "/home/saif/.adidas_order_state.json"
         import time
         now = time.time()
-        # Check every 10 minutes (600 seconds)
+        # Check every 1 hour (3600 seconds)
+        is_first_check = False
         if os.path.exists(state_file):
             data = json.load(open(state_file))
-            if now - data.get("last_check", 0) < 600:
+            if now - data.get("last_check", 0) < 3600:
                 return
-        
+        else:
+            is_first_check = True
+
         tracking_url = "https://adidas.clickpost.in/?waybill=GS1315368898&cm_mmc=AdiEmail_OLC-_-None-_-Shipping_Confirmation.Complete-_-Transactional-_-MainstoryCTA1-_-dv:eCom-_-cn:Order_Related-_-pc:None&cm_mmc1=IN&cm_mmca3=5UG9WTMXIIX84LDI&cm_mmca4=4238240&cm_mmc2=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_reengagement_window=30d&is_retargeting=true&pid=sfmc&c=adidas-ROW-eCom-Email-OLC-None-None-IN-Order_Related-None-2608&af_adset=Shipping_Confirmation.Complete&af_ad=MainstoryCTA1&af_channel=Order_Related"
         
-        # Send update to Telegram every 10 minutes or status check
-        msg = f"📦 Adidas Order Tracking Check (GS1315368898):\nYour order is being tracked live. Check latest status here:\n{tracking_url}"
+        prefix = "🚨 [FIRST CHECK ALERT] " if is_first_check else "📦 [HOURLY CHECK] "
+        msg = f"{prefix}Adidas Order Tracking (GS1315368898):\nYour order tracking status update. Check latest status here:\n{tracking_url}"
         send_telegram(msg)
         
         with open(state_file, "w") as f:
