@@ -33,9 +33,10 @@ def send_telegram(msg):
                     try:
                         data = json.dumps({'chat_id': chat_id, 'text': msg}).encode()
                         req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data, headers={'Content-Type': 'application/json'})
-                        urllib.request.urlopen(req, timeout=5)
-                    except:
-                        pass
+                        res = urllib.request.urlopen(req, timeout=5)
+                        print(f"Telegram sent to {chat_id}: status {res.status}")
+                    except Exception as ex:
+                        print(f"Telegram send failed for {chat_id}: {ex}")
     except Exception as e:
         print("Telegram error:", e)
 
