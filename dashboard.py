@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.11 Inline Date Traffic Report Edition"
+VERSION = "Dashboard v8.13 Traffic Distribution Graph Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -1912,7 +1912,7 @@ HTML = '''
                         <button type="button" onclick="loadTrafficReport()" style="background:var(--primary); color:white; border:none; border-radius:6px; padding:5px 10px; font-size:11px; cursor:pointer; font-weight:600;">Refresh</button>
                     </div>
                 </div>
-                <div style="max-height: 220px; overflow-y: auto;">
+                <div style="max-height: 220px; overflow-y: auto; margin-bottom: 12px;">
                     <table class="sthist" style="width:100%; border-collapse:collapse; font-size:12px;">
                         <thead>
                             <tr style="border-bottom:1px solid var(--border); text-align:left; color:var(--text-muted);">
@@ -1926,6 +1926,14 @@ HTML = '''
                             <tr><td colspan="4" style="text-align:center; padding:16px; color:var(--text-muted);">Loading traffic history...</td></tr>
                         </tbody>
                     </table>
+                </div>
+                <!-- Traffic Distribution Chart -->
+                <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted); margin-bottom:6px;">
+                        <span>📊 Data Consumption Distribution (توزيع الاستهلاك: تحميل وتنزيل)</span>
+                        <span id="traffic_ratio_label">RX: 0% | TX: 0%</span>
+                    </div>
+                    <canvas id="traffic_chart_canvas" width="600" height="70" style="width:100%; height:70px; display:block;"></canvas>
                 </div>
             </div>
         </section>
@@ -2783,9 +2791,67 @@ HTML = '''
                         <td style="padding:10px 8px; color:#60a5fa; font-weight:700;">${fmtB(sumTx)}</td>
                         <td style="padding:10px 8px; color:#34d399; font-weight:700;">${fmtB(sumCombined)}</td>
                     </tr>`;
+                    drawTrafficChart(sumRx, sumTx);
                 } else {
                     tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:16px; color:var(--text-muted);">No traffic consumption records found for the selected date range.</td></tr>`;
+                    drawTrafficChart(0, 0);
                 }
+            }
+
+            function drawTrafficChart(rx, tx){
+                const c = document.getElementById('traffic_chart_canvas');
+                if(!c) return;
+                const ctx = c.getContext('2d'), w = c.width, h = c.height;
+                ctx.clearRect(0,0,w,h);
+
+                const total = rx + tx;
+                const rxPct = total > 0 ? (rx / total) * 100 : 50;
+                const txPct = total > 0 ? (tx / total) * 100 : 50;
+                
+                document.getElementById('traffic_ratio_label').textContent = `RX: ${rxPct.toFixed(1)}% (${fmtB(rx)}) | TX: ${txPct.toFixed(1)}% (${fmtB(tx)})`;
+
+                // Draw background track
+                const barY = 24, barH = 22, barW = w - 40, barX = 20;
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.beginPath();
+                ctx.roundRect(barX, barY, barW, barH, 11);
+                ctx.fill();
+
+                if(total > 0){
+                    const rxWidth = Math.max(12, (rx / total) * barW);
+                    
+                    // RX Bar (Cyan)
+                    ctx.fillStyle = '#06b6d4';
+                    ctx.shadowColor = '#06b6d4';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.roundRect(barX, barY, rxWidth, barH, [11, (rxWidth >= barW - 5)?11:0, (rxWidth >= barW - 5)?11:0, 11]);
+                    ctx.fill();
+
+                    // TX Bar (Blue/Emerald)
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.shadowColor = '#3b82f6';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.roundRect(barX + rxWidth, barY, barW - rxWidth, barH, [0, 11, 11, 0]);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No traffic data for chart', w/2, barY + 15);
+                }
+
+                // Legend labels below
+                ctx.fillStyle = '#22d3ee';
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(`■ Download (RX): ${fmtB(rx)} (${rxPct.toFixed(1)}%)`, barX, barY + barH + 16);
+
+                ctx.fillStyle = '#60a5fa';
+                ctx.textAlign = 'right';
+                ctx.fillText(`Upload (TX): ${fmtB(tx)} (${txPct.toFixed(1)}%) ■`, barX + barW, barY + barH + 16);
             }
 
             function filterTrafficReport(){
