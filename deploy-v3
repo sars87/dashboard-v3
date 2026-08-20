@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.16.2 Performance & Live Polling Edition (`deploy-v3`)
+# Dashboard v8.17 Top Tailscale Live Traffic Widget (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -44,5 +44,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard || true
 
 echo "=========================================================="
-echo "✨ Dashboard v8.16.2 Performance & Live Polling deployed!"
+echo "✨ Dashboard v8.17 Top Tailscale Live Traffic Widget deployed!"
 echo "=========================================================="

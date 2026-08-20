@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.16.2 Performance & Live Polling Edition"
+VERSION = "Dashboard v8.17 Top Tailscale Live Traffic Widget Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -1921,6 +1921,30 @@ HTML = '''
                 <div class="health-card" style="--bar-color: #10b981; padding:12px 14px;">
                     <div class="health-label" style="font-size:11px;">📊 Combined</div>
                     <div class="health-value" id="quota_total" style="color:#34d399; font-size:16px; font-weight:700;">{{ net_quota.total_combined }}</div>
+                </div>
+            </div>
+
+            <!-- Tailscale Live Traffic Widget (Moved to Top with Matching Design) -->
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                    <span style="font-size:13px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6v6l4 2"/></svg>
+                        Tailscale Mesh Interface Live Traffic (استهلاك شبكة تيلسكيل)
+                    </span>
+                </div>
+                <div class="health-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                    <div class="health-card" style="--bar-color: #38bdf8; padding:12px 14px;">
+                        <div class="health-label" style="font-size:11px;">&#8595; Tailscale RX</div>
+                        <div class="health-value" id="ts_rx" style="color:#38bdf8; font-size:16px; font-weight:700;">{{ tailscale_traffic.rx }}</div>
+                    </div>
+                    <div class="health-card" style="--bar-color: #6366f1; padding:12px 14px;">
+                        <div class="health-label" style="font-size:11px;">&#8593; Tailscale TX</div>
+                        <div class="health-value" id="ts_tx" style="color:#818cf8; font-size:16px; font-weight:700;">{{ tailscale_traffic.tx }}</div>
+                    </div>
+                    <div class="health-card" style="--bar-color: #a855f7; padding:12px 14px;">
+                        <div class="health-label" style="font-size:11px;">📊 Combined TS</div>
+                        <div class="health-value" id="ts_combined" style="color:#c084fc; font-size:16px; font-weight:700;">{{ tailscale_traffic.combined }}</div>
+                    </div>
                 </div>
             </div>
 
