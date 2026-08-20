@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.16.1 Tailscale Interface Quota Fix Edition"
+VERSION = "Dashboard v8.16.2 Performance & Live Polling Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -3291,6 +3291,14 @@ HTML = '''
                         document.getElementById('quota_rx').textContent = fmtB(window._cumRx);
                         document.getElementById('quota_tx').textContent = fmtB(window._cumTx);
                         document.getElementById('quota_total').textContent = fmtB(window._cumRx + window._cumTx);
+                        if(d.tailscale){
+                            const tsRx = document.getElementById('ts_rx');
+                            const tsTx = document.getElementById('ts_tx');
+                            const tsComb = document.getElementById('ts_combined');
+                            if(tsRx) tsRx.textContent = d.tailscale.rx;
+                            if(tsTx) tsTx.textContent = d.tailscale.tx;
+                            if(tsComb) tsComb.textContent = d.tailscale.combined;
+                        }
                         const ifel = document.getElementById('bw_iface'); if(ifel) ifel.textContent = d.iface;
                         _rxH.push(rx); _txH.push(tx);
                         if(_rxH.length > _NPTS) _rxH.shift();
@@ -3812,7 +3820,10 @@ def web_deploy():
 def net():
     if not logged():
         return ("", 401)
-    return (json.dumps(net_counters()), 200, {"Content-Type": "application/json"})
+    data = net_counters()
+    data["tailscale"] = tailscale_traffic()
+    data["quota"] = network_traffic_quota()
+    return (json.dumps(data), 200, {"Content-Type": "application/json"})
 
 @app.route("/queries/search")
 def queries_search():
