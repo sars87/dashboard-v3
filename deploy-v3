@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.16 Tailscale Interface Quota Edition (`deploy-v3`)
+# Dashboard v8.16.1 Tailscale Interface Quota Fix Edition (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -44,5 +44,5 @@ echo "==> [4/4] Restarting dashboard systemd service..."
 sudo systemctl restart dashboard.service || sudo systemctl restart dashboard || true
 
 echo "=========================================================="
-echo "✨ Dashboard v8.16 Tailscale Interface Quota Edition deployed!"
+echo "✨ Dashboard v8.16.1 Tailscale Quota Fix deployed successfully!"
 echo "=========================================================="

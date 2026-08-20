@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.16 Tailscale Interface Quota Edition"
+VERSION = "Dashboard v8.16.1 Tailscale Interface Quota Fix Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -3631,6 +3631,7 @@ def dashboard():
         sys_services=systemd_services_list(),
         tailscale_details=tailscale_status_details(),
         tailscale_nodes=parse_tailscale_nodes(),
+        tailscale_traffic=tailscale_traffic(),
         repo_url=get_repo_url(),
         net_quota=network_traffic_quota()
     )
