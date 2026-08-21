@@ -20,7 +20,7 @@ app.secret_key = fallback_secret("DASHBOARD_SECRET_KEY", "fallback-secret-key-32
 PASSWORD = fallback_secret("DASHBOARD_PASSWORD", "Sars87")
 PIHOLE_PW = os.environ.get("PIHOLE_PASSWORD", "").strip()
 app.config.update(
-    SESSION_COOKIE_SECURE=os.environ.get("DASHBOARD_COOKIE_SECURE", "1") == "1",
+    SESSION_COOKIE_SECURE=os.environ.get("DASHBOARD_COOKIE_SECURE", "0") == "1",
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     MAX_CONTENT_LENGTH=64 * 1024,

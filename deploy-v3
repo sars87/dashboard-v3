@@ -57,7 +57,7 @@ if [ ! -f "/etc/dashboard/dashboard.env" ]; then
 DASHBOARD_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
 DASHBOARD_PASSWORD=Sars87
 PIHOLE_PASSWORD=
-DASHBOARD_COOKIE_SECURE=1
+DASHBOARD_COOKIE_SECURE=0
 EOF
     chmod 600 /etc/dashboard/dashboard.env
     chown root:root /etc/dashboard/dashboard.env
