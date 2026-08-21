@@ -37,7 +37,10 @@ else
     sudo -u "$TARGET_USER" bash -c "cd '$TARGET_DIR' && git remote set-url origin '$REPO_URL'"
 fi
 
-echo "==> [3/4] Installing / updating dashboard script..."
+echo "==> [3/5] Verifying Python syntax of dashboard.py..."
+python3 -B -c "import pathlib; compile(pathlib.Path('$TARGET_DIR/dashboard.py').read_text(), 'dashboard.py', 'exec')"
+
+echo "==> [4/5] Installing / updating dashboard script..."
 if [ -f "$TARGET_DIR/dashboard.py" ]; then
     cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
     chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/dashboard.py"
@@ -47,8 +50,31 @@ else
     exit 1
 fi
 
-echo "==> [4/4] Restarting dashboard systemd service..."
+echo "==> [5/5] Ensuring environment file exists and restarting service..."
+if [ ! -f "/etc/dashboard/dashboard.env" ]; then
+    mkdir -p /etc/dashboard
+    cat << 'EOF' > /etc/dashboard/dashboard.env
+DASHBOARD_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+DASHBOARD_PASSWORD=admin
+PIHOLE_PASSWORD=
+DASHBOARD_COOKIE_SECURE=1
+EOF
+    chmod 600 /etc/dashboard/dashboard.env
+    chown root:root /etc/dashboard/dashboard.env
+    echo "==> Created default /etc/dashboard/dashboard.env (Password: admin)"
+fi
+
+# Ensure dashboard.service has EnvironmentFile
+SERVICE_FILE="/etc/systemd/system/dashboard.service"
+if [ -f "$SERVICE_FILE" ] && ! grep -q "EnvironmentFile" "$SERVICE_FILE"; then
+    sed -i '/\[Service\]/a EnvironmentFile=/etc/dashboard/dashboard.env' "$SERVICE_FILE"
+    systemctl daemon-reload
+    echo "==> Added EnvironmentFile to dashboard.service"
+fi
+
 systemctl restart dashboard.service || systemctl restart dashboard || true
+cp "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
+chmod +x /usr/local/bin/deploy-v3
 
 echo "=========================================================="
 echo "✨ Dashboard v8.17.1 Deployed Successfully for $TARGET_USER!"
