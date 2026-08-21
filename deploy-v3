@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================================
-# Dashboard v8.17.1 Robust Deployment Script (`deploy-v3`)
+# v10.0 Robust Deployment Script (`deploy-v3`)
 # ==========================================================
 set -e
 
@@ -77,5 +77,5 @@ cp "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 chmod +x /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "✨ Dashboard v8.17.1 Deployed Successfully for $TARGET_USER!"
+echo "✨ v10.0 Deployed Successfully for $TARGET_USER!"
 echo "=========================================================="
