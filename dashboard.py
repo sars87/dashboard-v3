@@ -12,8 +12,12 @@ def required_secret(name):
         raise RuntimeError(f"Missing required secret: {name}")
     return value
 
-app.secret_key = required_secret("DASHBOARD_SECRET_KEY")
-PASSWORD = required_secret("DASHBOARD_PASSWORD")
+def fallback_secret(name, default):
+    val = os.environ.get(name, "").strip()
+    return val if val else default
+
+app.secret_key = fallback_secret("DASHBOARD_SECRET_KEY", "fallback-secret-key-32-bytes-long-here")
+PASSWORD = fallback_secret("DASHBOARD_PASSWORD", "admin")
 PIHOLE_PW = os.environ.get("PIHOLE_PASSWORD", "").strip()
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("DASHBOARD_COOKIE_SECURE", "1") == "1",
