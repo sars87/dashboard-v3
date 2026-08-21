@@ -1,6 +1,6 @@
 
 from flask import Flask, request, redirect, session, render_template_string, jsonify
-import os, subprocess, socket, re, json, urllib.request, time
+import os, subprocess, socket, re, json, urllib.request, time, shutil
 from urllib.parse import urlencode
 
 app = Flask(__name__)
@@ -8,7 +8,7 @@ app.secret_key = "Sars87_SECRET_KEY"
 PASSWORD = "Sars87"
 PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "Dashboard v8.17 Top Tailscale Live Traffic Widget Edition"
+VERSION = "Dashboard v8.18 Accurate Daily Traffic Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 
@@ -238,7 +238,12 @@ def tailscale_traffic():
         "raw_tx": tx_bytes
     }
 
+TRAFFIC_HISTORY_FILE = "/home/saif/.dashboard_traffic_history.json"
+TRAFFIC_STATE_FILE = "/home/saif/.dashboard_traffic_state.json"
+VIRTUAL_INTERFACES = ("lo", "docker", "br-", "veth", "tailscale", "tun", "wg")
+
 def network_traffic_quota():
+    """Read the physical LAN/WAN counters, without double-counting virtual links."""
     total_rx = 0
     total_tx = 0
     interfaces = []
@@ -247,7 +252,7 @@ def network_traffic_quota():
             for line in f.readlines()[2:]:
                 name, _, data = line.partition(":")
                 name = name.strip()
-                if name == "lo":
+                if name.startswith(VIRTUAL_INTERFACES):
                     continue
                 p = data.split()
                 if len(p) >= 9:
@@ -267,24 +272,47 @@ def network_traffic_quota():
         "interfaces": interfaces
     }
 
-TRAFFIC_HISTORY_FILE = "/home/saif/.dashboard_traffic_history.json"
+def load_traffic_history():
+    """Load v2 daily totals; preserve pre-v2 cumulative data as a backup once."""
+    try:
+        with open(TRAFFIC_HISTORY_FILE, "r") as f:
+            data = json.load(f)
+        if data.get("version") == 2 and isinstance(data.get("days"), dict):
+            return data
+        # Older releases saved boot-since counters, which cannot be converted
+        # into reliable daily usage. Preserve them instead of presenting them as usage.
+        legacy = TRAFFIC_HISTORY_FILE + ".legacy"
+        if not os.path.exists(legacy):
+            shutil.copy2(TRAFFIC_HISTORY_FILE, legacy)
+    except (OSError, ValueError, AttributeError, json.JSONDecodeError):
+        pass
+    return {"version": 2, "days": {}}
+
+def load_traffic_state():
+    try:
+        with open(TRAFFIC_STATE_FILE, "r") as f:
+            data = json.load(f)
+        if isinstance(data.get("rx"), int) and isinstance(data.get("tx"), int):
+            return data
+    except (OSError, ValueError, AttributeError, json.JSONDecodeError):
+        pass
+    return None
 
 def log_traffic_history(total_rx, total_tx):
+    """Add counter deltas to today's usage; handles interface/server counter resets."""
     try:
         import datetime
         today = datetime.date.today().isoformat()
-        history = {}
-        if os.path.exists(TRAFFIC_HISTORY_FILE):
-            with open(TRAFFIC_HISTORY_FILE, "r") as f:
-                history = json.load(f)
-        current = history.get(today, {"rx": 0, "tx": 0})
-        if total_rx >= current.get("rx", 0):
-            current["rx"] = total_rx
-        if total_tx >= current.get("tx", 0):
-            current["tx"] = total_tx
-        history[today] = current
+        history = load_traffic_history()
+        previous = load_traffic_state()
+        if previous and total_rx >= previous["rx"] and total_tx >= previous["tx"]:
+            current = history["days"].setdefault(today, {"rx": 0, "tx": 0})
+            current["rx"] += total_rx - previous["rx"]
+            current["tx"] += total_tx - previous["tx"]
         with open(TRAFFIC_HISTORY_FILE, "w") as f:
             json.dump(history, f)
+        with open(TRAFFIC_STATE_FILE, "w") as f:
+            json.dump({"rx": total_rx, "tx": total_tx, "sampled_at": int(time.time())}, f)
     except Exception:
         pass
 
@@ -2475,22 +2503,6 @@ HTML = '''
                 </div>
             </div>
 
-            <!-- Tailscale Traffic Quota Widget -->
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin: 16px 0;">
-                <div style="background:var(--bg); border:1px solid rgba(236,72,153,0.3); border-radius:10px; padding:12px;">
-                    <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">↓ TAILSCALE DOWNLOAD (RX)</div>
-                    <div id="ts_rx" style="font-size:16px; font-weight:700; color:#22d3ee;">{{ tailscale_traffic.rx }}</div>
-                </div>
-                <div style="background:var(--bg); border:1px solid rgba(236,72,153,0.3); border-radius:10px; padding:12px;">
-                    <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">↑ TAILSCALE UPLOAD (TX)</div>
-                    <div id="ts_tx" style="font-size:16px; font-weight:700; color:#60a5fa;">{{ tailscale_traffic.tx }}</div>
-                </div>
-                <div style="background:var(--bg); border:1px solid rgba(236,72,153,0.3); border-radius:10px; padding:12px;">
-                    <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">📊 TAILSCALE COMBINED</div>
-                    <div id="ts_combined" style="font-size:16px; font-weight:700; color:#34d399;">{{ tailscale_traffic.combined }}</div>
-                </div>
-            </div>
-
             <div style="margin-top:16px;">
                 <div style="overflow-x:auto;">
                     <table class="query-table" style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -2864,7 +2876,7 @@ HTML = '''
                         sumTx += (r.raw_tx !== undefined ? r.raw_tx : 0);
                     });
                     let sumCombined = sumRx + sumTx;
-                    let periodLabel = (fromDate || toDate) ? ((fromDate || 'Start') + ' → (To ' + (toDate || 'Now') + ')') : 'Total All Time (جميع الأوقات)';
+                    let periodLabel = (fromDate || toDate) ? ((fromDate || 'Start') + ' → (To ' + (toDate || 'Now') + ')') : 'Total Recorded Usage (الاستهلاك المسجل)';
 
                     tbody.innerHTML = `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
                         <td style="padding:10px 8px; font-weight:600; color:var(--primary-light);">📊 Period Sum (${filtered.length} days): ${periodLabel}</td>
@@ -3785,10 +3797,7 @@ def traffic_report():
     if not logged():
         return json.dumps({"error": "Unauthorized"}), 401, {"Content-Type": "application/json"}
     try:
-        history = {}
-        if os.path.exists(TRAFFIC_HISTORY_FILE):
-            with open(TRAFFIC_HISTORY_FILE, "r") as f:
-                history = json.load(f)
+        history = load_traffic_history()["days"]
         rows = []
         for date_str in sorted(history.keys(), reverse=True):
             d = history[date_str]
