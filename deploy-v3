@@ -16,7 +16,7 @@ TARGET_DIR="$USER_HOME/deployments/dashboard-v3"
 echo "==> [1/4] Preparing deployment directory for $TARGET_USER at $TARGET_DIR..."
 sudo -u "$TARGET_USER" mkdir -p "$TARGET_DIR"
 
-REPO_URL="git@github.com:sars87/dashboard-v3.git"
+REPO_URL="https://github.com/sars87/dashboard-v3.git"
 CONFIG_FILE="$USER_HOME/.dashboard_repo_url"
 if [ -f "$CONFIG_FILE" ]; then
     CUSTOM_URL=$(cat "$CONFIG_FILE" | tr -d '[:space:]')
