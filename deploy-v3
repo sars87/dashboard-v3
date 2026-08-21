@@ -1,48 +1,157 @@
-#!/bin/bash
-# ==========================================================
-# Dashboard v8.17 Top Tailscale Live Traffic Widget (`deploy-v3`)
-# ==========================================================
-set -e
-
-echo "==> [1/4] Preparing deployment directory..."
-TARGET_DIR="/home/$(whoami)/deployments/dashboard-v3"
-mkdir -p "$TARGET_DIR"
+#!/usr/bin/env bash
+# Secure deployment script for sars87/dashboard-v3.
+set -Eeuo pipefail
 
 REPO_URL="https://github.com/sars87/dashboard-v3.git"
-CONFIG_FILE="/home/$(whoami)/.dashboard_repo_url"
-if [ -f "$CONFIG_FILE" ]; then
-    CUSTOM_URL=$(cat "$CONFIG_FILE" | tr -d '[:space:]')
-    if ! [ -z "$CUSTOM_URL" ]; then
-        REPO_URL="$CUSTOM_URL"
-    fi
-fi
+APP_USER="saif"
+APP_HOME="/home/${APP_USER}"
+TARGET_DIR="${APP_HOME}/deployments/dashboard-v3"
+APP_FILE="${APP_HOME}/dashboard.py"
+ENV_DIR="/etc/dashboard"
+ENV_FILE="${ENV_DIR}/dashboard.env"
+SERVICE_FILE="/etc/systemd/system/dashboard.service"
+PORT="8088"
 
-if [ -d "$TARGET_DIR/.git" ]; then
-    echo "==> [2/4] Pulling latest changes from GitHub ($REPO_URL)..."
-    cd "$TARGET_DIR"
-    git remote set-url origin "$REPO_URL" || true
-    git reset --hard HEAD
-    git pull origin main || git pull origin master || true
-else
-    echo "==> [2/4] Cloning repository from GitHub ($REPO_URL)..."
-    git clone "$REPO_URL" "$TARGET_DIR" || true
-    cd "$TARGET_DIR"
-fi
-
-echo "==> [3/4] Installing / updating dashboard script..."
-if [ -f "$TARGET_DIR/dashboard.py" ]; then
-    USER_HOME=$(eval echo ~$(whoami))
-    sudo cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
-    sudo chown $(whoami):$(whoami) "$USER_HOME/dashboard.py"
-    echo "==> Dashboard script successfully installed to $USER_HOME/dashboard.py"
-else
-    echo "Error: dashboard.py not found in repository!"
+if [[ "$(id -un)" != "${APP_USER}" ]]; then
+    echo "Run this script as ${APP_USER}, not as root: sudo -u ${APP_USER} $0" >&2
     exit 1
 fi
 
-echo "==> [4/4] Restarting dashboard systemd service..."
-sudo systemctl restart dashboard.service || sudo systemctl restart dashboard || true
+if ! sudo -n true 2>/dev/null; then
+    echo "Sudo access is required. You may be asked for your password." >&2
+    sudo -v
+fi
 
-echo "=========================================================="
-echo "✨ Dashboard v8.17 Top Tailscale Live Traffic Widget deployed!"
-echo "=========================================================="
+if ! command -v gh >/dev/null 2>&1; then
+    echo "GitHub CLI (gh) is required for this private repository." >&2
+    echo "Install it, run 'gh auth login', then rerun deploy-v3." >&2
+    exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+    echo "GitHub CLI is not authenticated." >&2
+    echo "Run 'gh auth login' once, then rerun deploy-v3." >&2
+    exit 1
+fi
+gh auth setup-git >/dev/null
+
+cleanup() {
+    [[ -n "${TMP_ENV:-}" && -f "${TMP_ENV:-}" ]] && rm -f "${TMP_ENV}"
+    [[ -n "${TMP_UNIT:-}" && -f "${TMP_UNIT:-}" ]] && rm -f "${TMP_UNIT}"
+}
+trap cleanup EXIT
+
+printf '%s\n' '==> [1/7] Updating the deployment checkout...'
+mkdir -p "$(dirname "${TARGET_DIR}")"
+if [[ -d "${TARGET_DIR}/.git" ]]; then
+    git -C "${TARGET_DIR}" remote set-url origin "${REPO_URL}"
+    git -C "${TARGET_DIR}" fetch --prune origin main
+    git -C "${TARGET_DIR}" reset --hard origin/main
+else
+    git clone --single-branch --branch main "${REPO_URL}" "${TARGET_DIR}"
+fi
+
+printf '%s\n' '==> [2/7] Validating the downloaded Python source...'
+SOURCE_PATH="${TARGET_DIR}/dashboard.py"
+[[ -f "${SOURCE_PATH}" ]] || { echo "Missing ${SOURCE_PATH}" >&2; exit 1; }
+python3 -B -c "import pathlib; compile(pathlib.Path('${SOURCE_PATH}').read_text(), 'dashboard.py', 'exec')"
+
+printf '%s\n' '==> [3/7] Installing the application source...'
+sudo install -o "${APP_USER}" -g "${APP_USER}" -m 0644 "${SOURCE_PATH}" "${APP_FILE}"
+
+printf '%s\n' '==> [4/7] Preparing secrets outside the repository...'
+sudo install -d -o root -g root -m 0700 "${ENV_DIR}"
+existing_env=""
+if sudo test -f "${ENV_FILE}"; then
+    existing_env="$(sudo cat "${ENV_FILE}")"
+fi
+
+get_env_value() {
+    local key="$1"
+    printf '%s\n' "${existing_env}" | awk -F= -v key="${key}" '$1 == key {sub(/^[^=]*=/, ""); print; exit}'
+}
+
+DASHBOARD_SECRET_KEY="$(get_env_value DASHBOARD_SECRET_KEY)"
+DASHBOARD_PASSWORD="$(get_env_value DASHBOARD_PASSWORD)"
+PIHOLE_PASSWORD="$(get_env_value PIHOLE_PASSWORD)"
+DASHBOARD_COOKIE_SECURE="$(get_env_value DASHBOARD_COOKIE_SECURE)"
+
+if [[ -z "${DASHBOARD_SECRET_KEY}" ]]; then
+    DASHBOARD_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+    echo "Generated a new DASHBOARD_SECRET_KEY."
+fi
+
+if [[ -z "${DASHBOARD_PASSWORD}" ]]; then
+    if [[ ! -t 0 ]]; then
+        echo "DASHBOARD_PASSWORD is missing and deployment is non-interactive." >&2
+        echo "Create ${ENV_FILE} first, then rerun deployment." >&2
+        exit 1
+    fi
+    read -r -s -p "Enter a new dashboard admin password: " DASHBOARD_PASSWORD
+    echo
+    read -r -s -p "Repeat the dashboard admin password: " DASHBOARD_PASSWORD_CONFIRM
+    echo
+    [[ -n "${DASHBOARD_PASSWORD}" && "${DASHBOARD_PASSWORD}" == "${DASHBOARD_PASSWORD_CONFIRM}" ]] || {
+        echo "Passwords are empty or do not match." >&2
+        exit 1
+    }
+fi
+
+if [[ -z "${PIHOLE_PASSWORD}" && -t 0 ]]; then
+    read -r -s -p "Enter Pi-hole password (optional, press Enter to skip): " PIHOLE_PASSWORD
+    echo
+fi
+
+# The current deployment is HTTP on the LAN. Keep this 0 so the browser can
+# use the session; change it to 1 only after putting the app behind HTTPS.
+[[ -n "${DASHBOARD_COOKIE_SECURE}" ]] || DASHBOARD_COOKIE_SECURE="0"
+
+TMP_ENV="$(mktemp)"
+umask 077
+cat > "${TMP_ENV}" <<EOF
+DASHBOARD_SECRET_KEY=${DASHBOARD_SECRET_KEY}
+DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+PIHOLE_PASSWORD=${PIHOLE_PASSWORD}
+DASHBOARD_COOKIE_SECURE=${DASHBOARD_COOKIE_SECURE}
+EOF
+sudo install -o root -g root -m 0600 "${TMP_ENV}" "${ENV_FILE}"
+
+printf '%s\n' '==> [5/7] Installing the systemd service...'
+TMP_UNIT="$(mktemp)"
+cat > "${TMP_UNIT}" <<EOF
+[Unit]
+Description=Home Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${APP_USER}
+WorkingDirectory=${APP_HOME}
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${APP_FILE}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo install -o root -g root -m 0644 "${TMP_UNIT}" "${SERVICE_FILE}"
+
+printf '%s\n' '==> [6/7] Reloading and starting dashboard.service...'
+sudo systemctl daemon-reload
+sudo systemctl enable dashboard.service
+sudo systemctl restart dashboard.service
+
+printf '%s\n' '==> [7/7] Waiting for the HTTP health check...'
+for _ in {1..15}; do
+    if sudo systemctl is-active --quiet dashboard.service && curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:${PORT}/"; then
+        echo "Deployment complete: dashboard is running on port ${PORT}."
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "Dashboard did not become healthy." >&2
+sudo systemctl --no-pager --full status dashboard.service || true
+sudo journalctl -u dashboard.service -n 80 --no-pager || true
+exit 1

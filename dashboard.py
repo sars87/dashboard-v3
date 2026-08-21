@@ -1,12 +1,26 @@
 
 from flask import Flask, request, redirect, session, render_template_string, jsonify
-import os, subprocess, socket, re, json, urllib.request, time, shutil
+import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
 from urllib.parse import urlencode
 
 app = Flask(__name__)
-app.secret_key = "Sars87_SECRET_KEY"
-PASSWORD = "Sars87"
-PIHOLE_PW = "Sars87"          # Pi-hole web/API password (for real-time stats)
+
+# Secrets must be supplied by the service environment; never commit credentials.
+def required_secret(name):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required secret: {name}")
+    return value
+
+app.secret_key = required_secret("DASHBOARD_SECRET_KEY")
+PASSWORD = required_secret("DASHBOARD_PASSWORD")
+PIHOLE_PW = os.environ.get("PIHOLE_PASSWORD", "").strip()
+app.config.update(
+    SESSION_COOKIE_SECURE=os.environ.get("DASHBOARD_COOKIE_SECURE", "1") == "1",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    MAX_CONTENT_LENGTH=64 * 1024,
+)
 PIHOLE_API = "http://127.0.0.1/api"
 VERSION = "Dashboard v8.18 Accurate Daily Traffic Edition"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
@@ -56,20 +70,18 @@ def tailscale_status_details():
     return out if out else "Tailscale status unavailable or not logged in."
 
 def run_custom_command(cmd):
-    # Allowed safe diagnostic commands or general execution with timeout
-    if not cmd:
-        return ""
-    # Block dangerous destructive commands for safety
-    dangerous = ["rm -rf /", "mkfs", "dd if=", ":(){ :|:& };:"]
-    for d in dangerous:
-        if d in cmd:
-            return "Error: Command blocked for security reasons."
+    # Arbitrary shell execution from the browser is intentionally disabled.
+    return "Web terminal disabled for security. Use a predefined dashboard action."
+
+
+def run_action_sequence(sequences, log_path):
     try:
-        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
-        output = res.stdout + res.stderr
-        return output.strip() if output.strip() else "Command executed successfully with no output."
-    except Exception as e:
-        return f"Execution error: {str(e)}"
+        with open(log_path, "ab") as log_file:
+            for argv in sequences:
+                subprocess.run(argv, stdout=log_file, stderr=subprocess.STDOUT,
+                               check=False, timeout=900)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 def open_ports_scan():
     # Scan listening ports on server
@@ -3768,12 +3780,21 @@ def cleanup_cache():
     sh("sudo apt-get clean && sudo rm -rf /tmp/*")
     return redirect("/dashboard")
 
+SERVICE_ALLOWLIST = {
+    "openvpn-client@proton.service", "tg-control.timer", "jellyfin",
+    "filebrowser", "tailscaled", "cron", "ufw", "dashboard.service"
+}
+
 @app.route("/action/service/<sname>/<action>")
 def control_service(sname, action):
     if not logged():
         return redirect("/")
-    if action in ["start", "stop", "restart"]:
-        sh(f"sudo systemctl {action} {sname} 2>/dev/null")
+    if sname in SERVICE_ALLOWLIST and action in {"start", "stop", "restart"}:
+        try:
+            subprocess.run(["sudo", "systemctl", action, sname],
+                           check=False, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     return redirect("/dashboard")
 
 @app.route("/action/terminal", methods=["POST"])
@@ -3819,33 +3840,39 @@ def traffic_report():
 def web_deploy():
     if not logged():
         return redirect("/")
-    repo_url = request.form.get("repo_url", "").strip()
-    if repo_url:
-        set_repo_url(repo_url)
-    else:
-        repo_url = get_repo_url()
-    
-    deploy_script = f"""
-    set -e
-    TARGET_DIR="/home/$(whoami)/deployments/dashboard-v3"
-    mkdir -p "$TARGET_DIR"
-    if [ -d "$TARGET_DIR/.git" ]; then
-        cd "$TARGET_DIR"
-        git remote set-url origin {repo_url}
-        git reset --hard HEAD
-        git pull origin main || true
-    else
-        git clone {repo_url} "$TARGET_DIR" || true
-        cd "$TARGET_DIR"
-    fi
-    USER_HOME=$(eval echo ~$(whoami))
-    if [ -f "$TARGET_DIR/dashboard.py" ]; then
-        sudo cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
-        sudo chown $(whoami):$(whoami) "$USER_HOME/dashboard.py"
-    fi
-    sudo systemctl restart dashboard.service || sudo systemctl restart dashboard
-    """
-    sh(deploy_script)
+
+    # Deployment source is fixed to the trusted repository; never interpolate a
+    # browser-supplied URL into a shell command.
+    repo_url = request.form.get("repo_url", "").strip() or get_repo_url()
+    if repo_url != DEFAULT_REPO_URL:
+        return redirect("/dashboard")
+    set_repo_url(DEFAULT_REPO_URL)
+
+    target_dir = os.path.expanduser("~/deployments/dashboard-v3")
+    try:
+        os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+        if os.path.isdir(os.path.join(target_dir, ".git")):
+            subprocess.run(["git", "-C", target_dir, "remote", "set-url", "origin", repo_url],
+                           check=True, capture_output=True, text=True, timeout=20)
+            subprocess.run(["git", "-C", target_dir, "reset", "--hard", "HEAD"],
+                           check=True, capture_output=True, text=True, timeout=20)
+            subprocess.run(["git", "-C", target_dir, "pull", "--ff-only", "origin", "main"],
+                           check=True, capture_output=True, text=True, timeout=60)
+        else:
+            subprocess.run(["git", "clone", "--", repo_url, target_dir],
+                           check=True, capture_output=True, text=True, timeout=120)
+
+        source_path = os.path.join(target_dir, "dashboard.py")
+        destination_path = os.path.expanduser("~/dashboard.py")
+        if os.path.isfile(source_path):
+            shutil.copy2(source_path, destination_path)
+        try:
+            subprocess.run(["sudo", "systemctl", "restart", "dashboard.service"],
+                           check=False, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
     time.sleep(1)
     return redirect("/dashboard")
 
@@ -3991,50 +4018,59 @@ def action(name):
         return redirect("/")
     if name == "pihole_on":
         clear_pihole_pause_state()
-    if name.startswith("group_on/"):
-        gid = name.split("/")[-1]
-        subprocess.run(f"sudo sqlite3 /etc/pihole/gravity.db \"update 'group' set enabled=1 where id={gid};\" && sudo pihole reloadlists", shell=True)
+    if name.startswith(("group_on/", "group_off/")):
+        group_action, gid_text = name.split("/", 1)
+        if not re.fullmatch(r"[1-9][0-9]*", gid_text):
+            return redirect("/dashboard")
+        gid = int(gid_text)
+        enabled = 1 if group_action == "group_on" else 0
+        sql = f"UPDATE 'group' SET enabled={enabled} WHERE id={gid};"
+        try:
+            subprocess.run(["sudo", "sqlite3", "/etc/pihole/gravity.db", sql],
+                           check=False, capture_output=True, text=True, timeout=20)
+            subprocess.run(["sudo", "pihole", "reloadlists"],
+                           check=False, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
         return redirect("/dashboard")
 
-    if name.startswith("group_off/"):
-        gid = name.split("/")[-1]
-        subprocess.run(f"sudo sqlite3 /etc/pihole/gravity.db \"update 'group' set enabled=0 where id={gid};\" && sudo pihole reloadlists", shell=True)
-        return redirect("/dashboard")
-
-    cmds = {
-        "youtube_on": "bash /usr/local/bin/youtube_on.sh",
-        "youtube_off": "bash /usr/local/bin/youtube_off.sh",
-        "pihole_on": "pihole enable",
-        "pihole_off": "pihole disable",
-        "vpn_on": "systemctl start openvpn-client@proton",
-        "vpn_off": "systemctl stop openvpn-client@proton",
-        "tg_on": "systemctl start tg-control.timer",
-        "tg_off": "systemctl stop tg-control.timer",
-        "tg_restart": "systemctl restart tg-control.timer",
-        "jellyfin_on": "systemctl start jellyfin",
-        "jellyfin_off": "systemctl stop jellyfin",
-        "ftp_on": "systemctl start filebrowser",
-        "ftp_off": "systemctl stop filebrowser",
-        "tailscale_on": "systemctl start tailscaled && tailscale up",
-        "tailscale_off": "systemctl stop tailscaled",
-        "tailscale_fix": "systemctl restart tailscaled && tailscale up",
-        "restart_all": "systemctl restart openvpn-client@proton tg-control.timer tailscaled jellyfin filebrowser",
-        "update_system": "bash -c 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef upgrade' > /tmp/update.log 2>&1",
-        "pihole_update": "pihole -up -y > /tmp/pihole_update.log 2>&1",
-        "rollback": "/usr/local/bin/dashboard_manager.sh rollback-latest",
-        "manual_speedtest": "/usr/local/bin/run_speedtest.sh",
-        "reboot": "reboot"
+    action_sequences = {
+        "youtube_on": [["sudo", "bash", "/usr/local/bin/youtube_on.sh"]],
+        "youtube_off": [["sudo", "bash", "/usr/local/bin/youtube_off.sh"]],
+        "pihole_on": [["sudo", "pihole", "enable"]],
+        "pihole_off": [["sudo", "pihole", "disable"]],
+        "vpn_on": [["sudo", "systemctl", "start", "openvpn-client@proton"]],
+        "vpn_off": [["sudo", "systemctl", "stop", "openvpn-client@proton"]],
+        "tg_on": [["sudo", "systemctl", "start", "tg-control.timer"]],
+        "tg_off": [["sudo", "systemctl", "stop", "tg-control.timer"]],
+        "tg_restart": [["sudo", "systemctl", "restart", "tg-control.timer"]],
+        "jellyfin_on": [["sudo", "systemctl", "start", "jellyfin"]],
+        "jellyfin_off": [["sudo", "systemctl", "stop", "jellyfin"]],
+        "ftp_on": [["sudo", "systemctl", "start", "filebrowser"]],
+        "ftp_off": [["sudo", "systemctl", "stop", "filebrowser"]],
+        "tailscale_on": [["sudo", "systemctl", "start", "tailscaled"], ["sudo", "tailscale", "up"]],
+        "tailscale_off": [["sudo", "systemctl", "stop", "tailscaled"]],
+        "tailscale_fix": [["sudo", "systemctl", "restart", "tailscaled"], ["sudo", "tailscale", "up"]],
+        "restart_all": [["sudo", "systemctl", "restart", "openvpn-client@proton", "tg-control.timer", "tailscaled", "jellyfin", "filebrowser"]],
+        "update_system": [["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"], ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "-o", "Dpkg::Options::=--force-confold", "-o", "Dpkg::Options::=--force-confdef", "upgrade"]],
+        "pihole_update": [["sudo", "pihole", "-up", "-y"]],
+        "rollback": [["sudo", "/usr/local/bin/dashboard_manager.sh", "rollback-latest"]],
+        "manual_speedtest": [["sudo", "/usr/local/bin/run_speedtest.sh"]],
+        "reboot": [["sudo", "reboot"]]
     }
-    # Long-running jobs must not block the HTTP request (otherwise the browser
-    # hangs/times out). Run them detached and let the dashboard auto-refresh
-    # show the result when they finish.
     bg = {"update_system", "manual_speedtest", "pihole_update"}
-    if name in cmds:
-        full = "sudo " + cmds[name]
-        if name in bg:
-            subprocess.Popen("setsid " + full, shell=True)
-        else:
-            subprocess.run(full, shell=True)
+    if name in action_sequences:
+        sequences = action_sequences[name]
+        try:
+            if name in bg:
+                log_path = "/tmp/update.log" if name == "update_system" else "/tmp/pihole_update.log" if name == "pihole_update" else "/tmp/speedtest.log"
+                threading.Thread(target=run_action_sequence,
+                                   args=(sequences, log_path), daemon=True).start()
+            else:
+                for argv in sequences:
+                    subprocess.run(argv, check=False, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST":
         return json.dumps({"status": "success", "action": name}), 200, {"Content-Type": "application/json"}
     return redirect("/dashboard")
