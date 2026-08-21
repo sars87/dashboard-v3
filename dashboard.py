@@ -17,7 +17,7 @@ def fallback_secret(name, default):
     return val if val else default
 
 app.secret_key = fallback_secret("DASHBOARD_SECRET_KEY", "fallback-secret-key-32-bytes-long-here")
-PASSWORD = fallback_secret("DASHBOARD_PASSWORD", "admin")
+PASSWORD = fallback_secret("DASHBOARD_PASSWORD", "Sars87")
 PIHOLE_PW = os.environ.get("PIHOLE_PASSWORD", "").strip()
 app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("DASHBOARD_COOKIE_SECURE", "1") == "1",
