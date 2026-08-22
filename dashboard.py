@@ -688,8 +688,21 @@ def _ph_get(path):
             _PH_SID["sid"] = None
     return None
 
+def _pihole_sql(sql, database="/etc/pihole/pihole-FTL.db"):
+    """Run a Pi-hole SQLite read without shell quoting problems."""
+    try:
+        result = subprocess.run(
+            ["sudo", "sqlite3", "-separator", "|", database, sql],
+            capture_output=True, text=True, timeout=10, check=False)
+        return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
 def _gravity_count():
-    return int(sh("sudo sqlite3 /etc/pihole/gravity.db \"SELECT count(*) FROM gravity;\"") or 0)
+    try:
+        return int(_pihole_sql("SELECT count(*) FROM gravity;", "/etc/pihole/gravity.db") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 def pihole_stats():
     # Live home-screen numbers from the FTL API, with a DB fallback if it is down.
@@ -701,6 +714,11 @@ def pihole_stats():
         pct = round(float(q.get("percent_blocked", q.get("percentBlocked", 0)) or 0), 1)
         domains = int((j or {}).get("gravity", {}).get("domains_being_blocked") or 0) or _gravity_count()
         clients = int((j or {}).get("clients", {}).get("active") or 0)
+        # The screenshot showed a valid API response with zero queries while
+        # the local FTL database had live records. Prefer the local source in
+        # that inconsistent case so the cards match Recent DNS Query Search.
+        if total == 0 and _pihole_sql("SELECT 1 FROM queries LIMIT 1;"):
+            return _pihole_stats_db()
         return {"total": f"{total:,}", "blocked": f"{blocked:,}", "pct": pct,
                 "domains": f"{domains:,}", "clients": clients}
     except:
@@ -710,7 +728,7 @@ def _pihole_stats_db():
     # Fallback: read the on-disk FTL DB (up to ~60s stale). Blocked status set
     # matches Pi-hole's own definition (excludes 17=cache-stale).
     try:
-        row = sh("""sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db "SELECT count(*), sum(CASE WHEN status IN (1,4,5,6,7,8,9,10,11,15,16,18) THEN 1 ELSE 0 END), count(DISTINCT client) FROM queries WHERE timestamp >= strftime('%s','now','start of day');""" )
+        row = _pihole_sql("SELECT count(*), sum(CASE WHEN status IN (1,4,5,6,7,8,9,10,11,15,16,18) THEN 1 ELSE 0 END), count(DISTINCT client) FROM queries WHERE timestamp >= strftime('%s','now','start of day');")
         p = row.split("|")
         total = int(p[0] or 0)
         blocked = int((p[1] or "0").strip() or 0)
@@ -761,7 +779,7 @@ def _top_blocked(n):
         pass
     try:
         sql = "SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') AND status IN (1,4,5,6,7,8,9,10,11,15,16,18) GROUP BY domain ORDER BY count(*) DESC LIMIT %d;" % int(n)
-        out = sh("sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db \"%s\"" % sql.replace('"', ''))
+        out = _pihole_sql(sql)
         return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
     except Exception:
         return []
@@ -778,7 +796,7 @@ def _top_clients(n):
         pass
     try:
         sql = "SELECT client, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') GROUP BY client ORDER BY count(*) DESC LIMIT %d;" % int(n)
-        out = sh("sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db \"%s\"" % sql.replace('"', ''))
+        out = _pihole_sql(sql)
         return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
     except Exception:
         return []
