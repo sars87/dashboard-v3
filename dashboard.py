@@ -674,9 +674,16 @@ def _ph_get(path):
         if not sid:
             return None
         try:
-            req = urllib.request.Request(PIHOLE_API + path, headers={"sid": sid})
+            # Pi-hole v6 expects X-FTL-SID; older builds accept sid.
+            # Send both forms so the dashboard works with either API generation.
+            req = urllib.request.Request(
+                PIHOLE_API + path,
+                headers={"X-FTL-SID": sid, "sid": sid, "Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=4) as r:
-                return json.load(r)
+                payload = json.load(r)
+                if isinstance(payload, dict) and payload.get("error"):
+                    raise RuntimeError(str(payload["error"]))
+                return payload
         except:
             _PH_SID["sid"] = None
     return None
@@ -688,12 +695,12 @@ def pihole_stats():
     # Live home-screen numbers from the FTL API, with a DB fallback if it is down.
     try:
         j = _ph_get("/stats/summary")
-        q = j["queries"]
-        total = int(q["total"])
-        blocked = int(q["blocked"])
-        pct = round(float(q["percent_blocked"]), 1)
-        domains = int(j.get("gravity", {}).get("domains_being_blocked") or 0) or _gravity_count()
-        clients = int(j.get("clients", {}).get("active") or 0)
+        q = (j or {}).get("queries", {})
+        total = int(q.get("total", 0) or 0)
+        blocked = int(q.get("blocked", 0) or 0)
+        pct = round(float(q.get("percent_blocked", q.get("percentBlocked", 0)) or 0), 1)
+        domains = int((j or {}).get("gravity", {}).get("domains_being_blocked") or 0) or _gravity_count()
+        clients = int((j or {}).get("clients", {}).get("active") or 0)
         return {"total": f"{total:,}", "blocked": f"{blocked:,}", "pct": pct,
                 "domains": f"{domains:,}", "clients": clients}
     except:
