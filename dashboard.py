@@ -703,12 +703,7 @@ def _pihole_stats_db():
     # Fallback: read the on-disk FTL DB (up to ~60s stale). Blocked status set
     # matches Pi-hole's own definition (excludes 17=cache-stale).
     try:
-        row = sh("""sudo sqlite3 /etc/pihole/pihole-FTL.db "
-SELECT count(*),
- sum(CASE WHEN status IN (1,4,5,6,7,8,9,10,11,15,16,18) THEN 1 ELSE 0 END),
- count(DISTINCT client)
-FROM queries WHERE timestamp >= strftime('%s','now','start of day');
-" """)
+        row = sh("""sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db "SELECT count(*), sum(CASE WHEN status IN (1,4,5,6,7,8,9,10,11,15,16,18) THEN 1 ELSE 0 END), count(DISTINCT client) FROM queries WHERE timestamp >= strftime('%s','now','start of day');""" )
         p = row.split("|")
         total = int(p[0] or 0)
         blocked = int((p[1] or "0").strip() or 0)
@@ -753,8 +748,15 @@ def top_blocked(n=5):
 def _top_blocked(n):
     try:
         j = _ph_get(f"/stats/top_domains?blocked=true&count={n}")
-        return [{"domain": d["domain"], "count": d["count"]} for d in j["domains"]]
-    except:
+        if j and j.get("domains"):
+            return [{"domain": d.get("domain", ""), "count": d.get("count", 0)} for d in j["domains"]]
+    except Exception:
+        pass
+    try:
+        sql = "SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') AND status IN (1,4,5,6,7,8,9,10,11,15,16,18) GROUP BY domain ORDER BY count(*) DESC LIMIT %d;" % int(n)
+        out = sh("sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db \"%s\"" % sql.replace('"', ''))
+        return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+    except Exception:
         return []
 
 def top_clients(n=5):
@@ -763,8 +765,15 @@ def top_clients(n=5):
 def _top_clients(n):
     try:
         j = _ph_get(f"/stats/top_clients?count={n}")
-        return [{"name": (c.get("name") or c.get("ip")), "count": c["count"]} for c in j["clients"]]
-    except:
+        if j and j.get("clients"):
+            return [{"name": (c.get("name") or c.get("ip") or "Unknown"), "count": c.get("count", 0)} for c in j["clients"]]
+    except Exception:
+        pass
+    try:
+        sql = "SELECT client, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') GROUP BY client ORDER BY count(*) DESC LIMIT %d;" % int(n)
+        out = sh("sudo sqlite3 -separator '|' /etc/pihole/pihole-FTL.db \"%s\"" % sql.replace('"', ''))
+        return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+    except Exception:
         return []
 
 def query_counts_24h(domain_filter="", client_filter=""):
