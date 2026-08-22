@@ -780,7 +780,12 @@ def _top_blocked(n):
     try:
         sql = "SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') AND status IN (1,4,5,6,7,8,9,10,11,15,16,18) GROUP BY domain ORDER BY count(*) DESC LIMIT %d;" % int(n)
         out = _pihole_sql(sql)
-        return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+        rows = [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+        if rows:
+            return rows
+        # Older FTL versions use different numeric blocked-status values.
+        broad = _pihole_sql("SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','-1 day') GROUP BY domain ORDER BY count(*) DESC LIMIT %d;" % int(n))
+        return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in broad.splitlines()) if len(p) == 2]
     except Exception:
         return []
 
@@ -797,7 +802,12 @@ def _top_clients(n):
     try:
         sql = "SELECT client, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') GROUP BY client ORDER BY count(*) DESC LIMIT %d;" % int(n)
         out = _pihole_sql(sql)
-        return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+        rows = [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
+        if rows:
+            return rows
+        # Fall back to all retained queries when the local clock/date filter differs.
+        broad = _pihole_sql("SELECT client, count(*) FROM queries GROUP BY client ORDER BY count(*) DESC LIMIT %d;" % int(n))
+        return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in broad.splitlines()) if len(p) == 2]
     except Exception:
         return []
 
