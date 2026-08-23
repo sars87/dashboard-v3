@@ -57,7 +57,7 @@ def get_electricity_config():
     """Load read-only e-app sync configuration from environment or local config."""
     config = {
         "backend_url": os.environ.get("ELECTRICITY_BACKEND_URL", DEFAULT_ELECTRICITY_BACKEND_URL).strip().rstrip("/"),
-        "workspace_key": os.environ.get("ELECTRICITY_WORKSPACE_KEY", "").strip(),
+        "workspace_key": os.environ.get("ELECTRICITY_WORKSPACE_KEY", "home").strip() or "home",
         "sync_key": os.environ.get("ELECTRICITY_SYNC_KEY", "").strip(),
         "state_file": os.environ.get("ELECTRICITY_STATE_FILE", "").strip(),
     }
@@ -97,7 +97,10 @@ def save_electricity_config(values):
 def _unwrap_trpc(payload):
     """Unwrap common tRPC v10 response envelopes."""
     value = payload
-    for _ in range(4):
+    for _ in range(5):
+        if isinstance(value, list) and len(value) == 1:
+            value = value[0]
+            continue
         if isinstance(value, dict) and "result" in value:
             value = value["result"]
             continue
@@ -124,9 +127,9 @@ def _load_electricity_state():
     if not config.get("workspace_key") or not config.get("sync_key"):
         return {}, "", "Electricity sync is not configured yet."
     try:
-        input_data = {"json": {"workspaceKey": config["workspace_key"], "syncKey": config["sync_key"], "clientId": "dashboard"}}
-        url = config["backend_url"] + "/api/trpc/sync.pull"
-        body = json.dumps(input_data, separators=(",", ":")).encode("utf-8")
+        input_data = {"workspaceKey": config["workspace_key"], "syncKey": config["sync_key"], "clientId": "dashboard"}
+        url = config["backend_url"] + "/api/trpc/sync.pull?batch=1"
+        body = json.dumps({"0": {"json": input_data}}, separators=(",", ":")).encode("utf-8")
         req = urllib.request.Request(url, data=body, method="POST", headers={"Accept": "application/json", "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=6) as response:
             payload = _unwrap_trpc(json.load(response))
@@ -205,7 +208,9 @@ def electricity_analytics(period="day"):
     period = "month" if period == "month" else "day"
     selected = today if period == "day" else today[:7]
     if not state:
-        return {"ok": False, "error": error, "source": source, "period": period, "selected": selected, "config": get_electricity_config(), "summary": {}, "devices": [], "daily": []}
+        cfg = get_electricity_config()
+        public_config = {"backend_url": cfg.get("backend_url", ""), "workspace_key": cfg.get("workspace_key", "home"), "state_file": cfg.get("state_file", ""), "configured": bool(cfg.get("workspace_key") and cfg.get("sync_key"))}
+        return {"ok": False, "error": error, "source": source, "period": period, "selected": selected, "config": public_config, "summary": {}, "devices": [], "daily": []}
 
     devices = state.get("devices") if isinstance(state.get("devices"), list) else []
     entries = state.get("usageEntries") if isinstance(state.get("usageEntries"), list) else []
@@ -4086,7 +4091,7 @@ ELECTRICITY_HTML = '''
         <div class="section-head"><h2>تفاصيل إضافية</h2><span>قراءة مباشرة من حالة e-app المتزامنة</span></div>
         <div class="grid two"><div class="card"><h3>جدول تشغيل المولدة</h3>{% if data.schedule %}<div class="table-wrap"><table style="min-width:300px"><thead><tr><th>من</th><th>إلى</th></tr></thead><tbody>{% for p in data.schedule %}<tr><td>{{p.onTime}}</td><td>{{p.offTime}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">لا يوجد جدول تشغيل محدد.</div>{% endif %}</div><div class="card"><h3>مصدر البيانات</h3><div class="detail-label">المصدر</div><div class="detail-value" style="margin-bottom:13px;">{{data.source}}</div><div class="detail-label">الفترة</div><div class="detail-value">{{'اليوم' if data.period == 'day' else 'هذا الشهر'}}</div><p class="hint">يتم احتساب الاستهلاك من سجلات الأجهزة، مع تقسيم الدقائق بين المولدة والوطني حسب مصدر السجل أو جدول المولدة.</p></div></div>
     {% endif %}
-    <div class="card config"><div class="section-head" style="margin-top:0"><h2>إعداد مصدر بيانات الكهرباء</h2><span>يُحفظ محلياً على السيرفر</span></div><form action="/electricity/config" method="post"><div><label>Backend URL</label><input name="backend_url" value="{{data.config.backend_url}}" placeholder="http://127.0.0.1:3000"></div><div><label>Workspace Key</label><input name="workspace_key" value="" placeholder="أدخل workspace key"></div><div><label>Sync Key</label><input name="sync_key" type="password" value="" placeholder="أدخل sync key"></div><div><label>Local JSON state (اختياري)</label><input name="state_file" value="{{data.config.state_file}}" placeholder="/home/saif/electricity-state.json"></div><button class="btn green save" type="submit">حفظ الإعدادات</button></form><p class="hint">إذا كان e-app يعمل على نفس السيرفر استخدم غالباً <code>http://127.0.0.1:3000</code>. يمكن بدلاً من ذلك وضع نسخة JSON من ElectricityState في مسار محلي. مفاتيح المزامنة لا تُعرض بعد الحفظ.</p></div>
+    <div class="card config"><div class="section-head" style="margin-top:0"><h2>إعداد مصدر بيانات الكهرباء</h2><span>يُحفظ محلياً على السيرفر</span></div><form action="/electricity/config" method="post"><div><label>Backend URL</label><input name="backend_url" value="{{data.config.backend_url}}" placeholder="http://127.0.0.1:3000"></div><div><label>Workspace Key</label><input name="workspace_key" value="{{data.config.workspace_key or 'home'}}" placeholder="home"></div><div><label>Sync Key</label><input name="sync_key" type="password" value="" placeholder="أدخل sync key"></div><div><label>Local JSON state (اختياري)</label><input name="state_file" value="{{data.config.state_file}}" placeholder="/home/saif/electricity-state.json"></div><button class="btn green save" type="submit">حفظ الإعدادات</button></form><p class="hint">إذا كان e-app يعمل على نفس السيرفر استخدم غالباً <code>http://127.0.0.1:3000</code>. يمكن بدلاً من ذلك وضع نسخة JSON من ElectricityState في مسار محلي. مفاتيح المزامنة لا تُعرض بعد الحفظ.</p></div>
 </div>
 <script>
 let currentPeriod = '{{data.period}}';
