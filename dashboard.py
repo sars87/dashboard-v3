@@ -124,17 +124,20 @@ def _load_electricity_state():
                 return state, "local file", ""
         except (OSError, ValueError, TypeError) as exc:
             return {}, "", f"Local state file could not be read: {exc}"
-    if not config.get("workspace_key") or not config.get("sync_key"):
-        return {}, "", "Electricity sync is not configured yet."
     try:
-        input_data = {"workspaceKey": config["workspace_key"], "syncKey": config["sync_key"], "clientId": "dashboard"}
-        url = config["backend_url"] + "/api/trpc/sync.pull?batch=1"
+        if config.get("sync_key"):
+            input_data = {"workspaceKey": config.get("workspace_key") or "home", "syncKey": config["sync_key"], "clientId": "dashboard"}
+            path = "sync.pull"
+        else:
+            input_data = {"workspaceKey": config.get("workspace_key") or "home"}
+            path = "sync.latest"
+        url = config["backend_url"] + f"/api/trpc/{path}?batch=1"
         body = json.dumps({"0": {"json": input_data}}, separators=(",", ":")).encode("utf-8")
         req = urllib.request.Request(url, data=body, method="POST", headers={"Accept": "application/json", "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=6) as response:
             payload = _unwrap_trpc(json.load(response))
         if isinstance(payload, dict) and payload.get("found") and isinstance(payload.get("state"), dict):
-            return payload["state"], "e-app sync", ""
+            return payload["state"], "e-app local latest" if path == "sync.latest" else "e-app sync", ""
         if isinstance(payload, dict) and payload.get("found") is False:
             return {}, "", "No electricity state has been synced by the e-app yet."
         return {}, "", "The e-app returned an unexpected sync response."
