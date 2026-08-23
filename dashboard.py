@@ -1,7 +1,8 @@
 
 from flask import Flask, request, redirect, session, render_template_string, jsonify
 import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -29,6 +30,9 @@ PIHOLE_API = "http://127.0.0.1/api"
 VERSION = "v10.0"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
+ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
+DEFAULT_ELECTRICITY_BACKEND_URL = "http://127.0.0.1:3000"
+
 
 def get_repo_url():
     try:
@@ -47,6 +51,249 @@ def set_repo_url(url):
             f.write(url.strip())
     except Exception:
         pass
+
+
+def get_electricity_config():
+    """Load read-only e-app sync configuration from environment or local config."""
+    config = {
+        "backend_url": os.environ.get("ELECTRICITY_BACKEND_URL", DEFAULT_ELECTRICITY_BACKEND_URL).strip().rstrip("/"),
+        "workspace_key": os.environ.get("ELECTRICITY_WORKSPACE_KEY", "").strip(),
+        "sync_key": os.environ.get("ELECTRICITY_SYNC_KEY", "").strip(),
+        "state_file": os.environ.get("ELECTRICITY_STATE_FILE", "").strip(),
+    }
+    try:
+        if os.path.exists(ELECTRICITY_CONFIG_FILE):
+            with open(ELECTRICITY_CONFIG_FILE, "r") as f:
+                saved = json.load(f)
+            for key in config:
+                if not os.environ.get({"backend_url": "ELECTRICITY_BACKEND_URL", "workspace_key": "ELECTRICITY_WORKSPACE_KEY", "sync_key": "ELECTRICITY_SYNC_KEY", "state_file": "ELECTRICITY_STATE_FILE"}[key], "").strip() and saved.get(key):
+                    config[key] = str(saved[key]).strip()
+            config["backend_url"] = config["backend_url"].rstrip("/")
+    except (OSError, ValueError, TypeError):
+        pass
+    return config
+
+
+def save_electricity_config(values):
+    config = get_electricity_config()
+    config.update({
+        "backend_url": (values.get("backend_url") or config["backend_url"]).strip().rstrip("/"),
+        "workspace_key": ((values.get("workspace_key") or config["workspace_key"]).strip())[:100],
+        "sync_key": ((values.get("sync_key") or config["sync_key"]).strip())[:255],
+        "state_file": ((values.get("state_file") or config["state_file"]).strip())[:512],
+    })
+    try:
+        with open(ELECTRICITY_CONFIG_FILE, "w") as f:
+            json.dump(config, f)
+        try:
+            os.chmod(ELECTRICITY_CONFIG_FILE, 0o600)
+        except OSError:
+            pass
+    except OSError:
+        pass
+    return config
+
+
+def _unwrap_trpc(payload):
+    """Unwrap common tRPC v10 response envelopes."""
+    value = payload
+    for _ in range(4):
+        if isinstance(value, dict) and "result" in value:
+            value = value["result"]
+            continue
+        if isinstance(value, dict) and "data" in value and len(value) == 1:
+            value = value["data"]
+            continue
+        if isinstance(value, dict) and "json" in value and len(value) <= 2:
+            value = value["json"]
+            continue
+        break
+    return value
+
+
+def _load_electricity_state():
+    config = get_electricity_config()
+    if config.get("state_file"):
+        try:
+            with open(os.path.expanduser(config["state_file"]), "r") as f:
+                state = json.load(f)
+            if isinstance(state, dict):
+                return state, "local file", ""
+        except (OSError, ValueError, TypeError) as exc:
+            return {}, "", f"Local state file could not be read: {exc}"
+    if not config.get("workspace_key") or not config.get("sync_key"):
+        return {}, "", "Electricity sync is not configured yet."
+    try:
+        input_data = {"json": {"workspaceKey": config["workspace_key"], "syncKey": config["sync_key"], "clientId": "dashboard"}}
+        url = config["backend_url"] + "/api/trpc/sync.pull"
+        body = json.dumps(input_data, separators=(",", ":")).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST", headers={"Accept": "application/json", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=6) as response:
+            payload = _unwrap_trpc(json.load(response))
+        if isinstance(payload, dict) and payload.get("found") and isinstance(payload.get("state"), dict):
+            return payload["state"], "e-app sync", ""
+        if isinstance(payload, dict) and payload.get("found") is False:
+            return {}, "", "No electricity state has been synced by the e-app yet."
+        return {}, "", "The e-app returned an unexpected sync response."
+    except Exception as exc:
+        return {}, "", f"Electricity backend unavailable: {exc}"
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _minutes_from_hhmm(value):
+    try:
+        hours, minutes = [int(part) for part in str(value).split(":", 1)]
+        return max(0, min(1439, hours * 60 + minutes))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _generator_intervals(state, date_key, horizon=1440):
+    schedule = (state.get("generatorOverrides") or {}).get(date_key) or state.get("generatorSchedule") or []
+    intervals = []
+    for period in schedule if isinstance(schedule, list) else []:
+        on = _minutes_from_hhmm(period.get("onTime", "00:00"))
+        off = _minutes_from_hhmm(period.get("offTime", "00:00"))
+        if on == off:
+            continue
+        parts = [(on, off)] if on < off else [(on, 1440), (0, off)]
+        for start, end in parts:
+            start, end = min(start, horizon), min(end, horizon)
+            if end > start:
+                intervals.append((start, end))
+    intervals.sort()
+    merged = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _generator_minutes(state, date_key, horizon=1440):
+    return sum(end - start for start, end in _generator_intervals(state, date_key, horizon))
+
+
+def _split_unsourced_minutes(state, date_key, total_minutes, now=None):
+    horizon = 1440
+    if now and date_key == now.strftime("%Y-%m-%d"):
+        horizon = now.hour * 60 + now.minute
+    generator = _generator_minutes(state, date_key, horizon)
+    if horizon > 0 and total_minutes <= horizon:
+        generator = round(total_minutes * generator / horizon)
+    return generator, max(0, total_minutes - generator)
+
+
+def electricity_analytics(period="day"):
+    state, source, error = _load_electricity_state()
+    now = datetime.now().astimezone()
+    today = now.strftime("%Y-%m-%d")
+    period = "month" if period == "month" else "day"
+    selected = today if period == "day" else today[:7]
+    if not state:
+        return {"ok": False, "error": error, "source": source, "period": period, "selected": selected, "config": get_electricity_config(), "summary": {}, "devices": [], "daily": []}
+
+    devices = state.get("devices") if isinstance(state.get("devices"), list) else []
+    entries = state.get("usageEntries") if isinstance(state.get("usageEntries"), list) else []
+    runtime_map = state.get("deviceRuntime") if isinstance(state.get("deviceRuntime"), dict) else {}
+    gen_rate = _safe_float(state.get("generatorPricePerKwh"), 0)
+    national_rate = _safe_float(state.get("pricePerKwh"), 0)
+    device_rows = []
+    total_gen_min = total_nat_min = 0
+    total_gen_energy = total_nat_energy = 0.0
+
+    def included(date_value):
+        return str(date_value).startswith(selected) if period == "month" else str(date_value) == selected
+
+    for device in devices:
+        device_id = str(device.get("id", ""))
+        power = max(0.0, _safe_float(device.get("powerWatts"), 0))
+        gen_min = nat_min = 0
+        matched = [entry for entry in entries if str(entry.get("deviceId", "")) == device_id and included(entry.get("date", ""))]
+        for entry in matched:
+            minutes = max(0, _safe_int(entry.get("durationMinutes"), 0))
+            source_value = str(entry.get("source", "")).lower()
+            if source_value == "generator":
+                gen_min += minutes
+            elif source_value == "national":
+                nat_min += minutes
+            else:
+                g, n = _split_unsourced_minutes(state, str(entry.get("date", today)), minutes, now)
+                gen_min += g
+                nat_min += n
+        runtime = runtime_map.get(device_id) if isinstance(runtime_map.get(device_id), dict) else {}
+        live_minutes = 0
+        if period == "day" and runtime.get("isOn"):
+            try:
+                started = datetime.fromisoformat(str(runtime.get("startedAt", "")).replace("Z", "+00:00"))
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+                live_minutes = max(0, int((datetime.now(timezone.utc) - started.astimezone(timezone.utc)).total_seconds() / 60))
+            except (TypeError, ValueError):
+                live_minutes = 0
+            g, n = _split_unsourced_minutes(state, today, live_minutes, now)
+            gen_min += g
+            nat_min += n
+        if not matched and device.get("mode") == "permanent":
+            horizon = now.hour * 60 + now.minute if period == "day" else 1440
+            dates = [today] if period == "day" else []
+            if period == "month":
+                dates = [today[:7] + "-" + str(day).zfill(2) for day in range(1, now.day + 1)]
+            for date_key in dates:
+                g = _generator_minutes(state, date_key, horizon if date_key == today else 1440)
+                total = horizon if date_key == today else 1440
+                gen_min += g
+                nat_min += max(0, total - g)
+        gen_energy = power / 1000 * gen_min / 60
+        nat_energy = power / 1000 * nat_min / 60
+        gen_cost = gen_energy * gen_rate
+        nat_cost = nat_energy * national_rate
+        total_gen_min += gen_min
+        total_nat_min += nat_min
+        total_gen_energy += gen_energy
+        total_nat_energy += nat_energy
+        device_rows.append({
+            "id": device_id, "name": device.get("name") or "Unnamed device", "category": device.get("category") or "General",
+            "power_watts": round(power, 1), "generator_minutes": gen_min, "national_minutes": nat_min,
+            "generator_kwh": round(gen_energy, 3), "national_kwh": round(nat_energy, 3),
+            "energy_kwh": round(gen_energy + nat_energy, 3), "generator_cost": round(gen_cost, 2),
+            "national_cost": round(nat_cost, 2), "cost": round(gen_cost + nat_cost, 2),
+            "is_on": bool(runtime_map.get(device_id, {}).get("isOn")) if isinstance(runtime_map.get(device_id), dict) else False,
+        })
+    device_rows.sort(key=lambda row: (-row["energy_kwh"], -row["cost"], row["name"].lower()))
+    total_energy = total_gen_energy + total_nat_energy
+    total_cost = total_gen_energy * gen_rate + total_nat_energy * national_rate
+    active_count = sum(1 for row in device_rows if row["is_on"])
+    return {
+        "ok": True, "source": source, "period": period, "selected": selected, "updated_at": now.isoformat(),
+        "config": {"backend_url": get_electricity_config().get("backend_url", ""), "configured": bool(get_electricity_config().get("workspace_key") and get_electricity_config().get("sync_key"))},
+        "summary": {
+            "total_devices": len(device_rows), "active_devices": active_count, "generator_minutes": total_gen_min,
+            "national_minutes": total_nat_min, "generator_kwh": round(total_gen_energy, 3), "national_kwh": round(total_nat_energy, 3),
+            "total_kwh": round(total_energy, 3), "generator_cost": round(total_gen_energy * gen_rate, 2),
+            "national_cost": round(total_nat_energy * national_rate, 2), "total_cost": round(total_cost, 2),
+            "generator_percent": round(total_gen_energy / total_energy * 100, 1) if total_energy else 0,
+            "national_percent": round(total_nat_energy / total_energy * 100, 1) if total_energy else 0,
+            "generator_status": state.get("generatorStatus", "off"), "generator_rate": gen_rate, "national_rate": national_rate,
+        },
+        "devices": device_rows,
+        "schedule": state.get("generatorSchedule") or [],
+    }
+
 
 def parse_tailscale_nodes():
     out = sh("tailscale status 2>/dev/null")
@@ -1957,7 +2204,11 @@ HTML = '''
             </div>
         </header>
 
-
+        <!-- Standalone dashboard tabs -->
+        <nav class="tabs-nav" aria-label="Dashboard sections">
+            <a class="tab-btn active" href="/dashboard">⌂ Home</a>
+            <a class="tab-btn" href="/electricity">⚡ Electricity Analytics</a>
+        </nav>
 
         <!-- Live Bandwidth -->
         <section class="section">
@@ -3739,6 +3990,115 @@ def dashboard():
         repo_url=get_repo_url(),
         net_quota=network_traffic_quota()
     )
+
+
+@app.route("/electricity")
+def electricity():
+    if not logged():
+        return redirect("/")
+    period = request.args.get("period", "day")
+    return render_template_string(ELECTRICITY_HTML, version=VERSION, data=electricity_analytics(period))
+
+
+@app.route("/electricity/data")
+def electricity_data():
+    if not logged():
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+    return jsonify(electricity_analytics(request.args.get("period", "day")))
+
+
+@app.route("/electricity/config", methods=["POST"])
+def electricity_config():
+    if not logged():
+        return redirect("/")
+    save_electricity_config(request.form)
+    return redirect("/electricity")
+
+
+ELECTRICITY_HTML = '''
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Electricity Analytics - {{version}}</title>
+    <style>
+        :root { --bg:#050816; --panel:rgba(15,23,42,.84); --panel2:#0b1325; --line:rgba(148,163,184,.18); --text:#eef2ff; --muted:#94a3b8; --blue:#60a5fa; --cyan:#22d3ee; --green:#34d399; --orange:#f59e0b; --red:#fb7185; }
+        * { box-sizing:border-box; }
+        body { margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at 15% 0%,rgba(37,99,235,.18),transparent 34%),radial-gradient(circle at 90% 20%,rgba(124,58,237,.17),transparent 30%),var(--bg); font-family:Inter,Segoe UI,Tahoma,sans-serif; }
+        .wrap { width:min(1420px,calc(100% - 32px)); margin:0 auto; padding:28px 0 54px; }
+        .topbar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:24px; }
+        .brand { display:flex; align-items:center; gap:14px; }
+        .brand-icon { width:48px; height:48px; display:grid; place-items:center; border-radius:15px; background:linear-gradient(135deg,#2563eb,#7c3aed); box-shadow:0 0 30px rgba(96,165,250,.3); font-size:24px; }
+        h1 { margin:0; font-size:clamp(22px,3vw,34px); letter-spacing:-.5px; } h2 { margin:0; font-size:19px; } h3 { margin:0 0 12px; font-size:14px; color:#cbd5e1; }
+        .subtitle { color:var(--muted); margin:5px 0 0; font-size:13px; }
+        .actions { display:flex; gap:9px; flex-wrap:wrap; justify-content:flex-end; }
+        .btn, select, input { border:1px solid var(--line); color:var(--text); background:rgba(15,23,42,.8); border-radius:10px; padding:10px 13px; font:inherit; font-size:13px; }
+        .btn { cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:7px; } .btn:hover { border-color:rgba(96,165,250,.65); background:rgba(30,64,175,.25); }
+        .btn.primary { background:linear-gradient(135deg,#2563eb,#4f46e5); border-color:transparent; } .btn.green { background:rgba(16,185,129,.15); border-color:rgba(52,211,153,.35); color:#a7f3d0; }
+        .nav { display:flex; gap:9px; overflow:auto; margin-bottom:24px; padding-bottom:4px; border-bottom:1px solid var(--line); } .nav a { white-space:nowrap; }
+        .grid { display:grid; gap:15px; } .metrics { grid-template-columns:repeat(4,minmax(0,1fr)); } .sources { grid-template-columns:repeat(2,minmax(0,1fr)); } .two { grid-template-columns:1.15fr .85fr; }
+        .card { background:linear-gradient(145deg,rgba(30,41,59,.82),rgba(8,15,31,.94)); border:1px solid var(--line); border-radius:18px; padding:20px; box-shadow:0 16px 50px rgba(0,0,0,.18); }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.8px; } .metric-value { margin-top:9px; font-size:28px; font-weight:800; } .metric-note { color:var(--muted); font-size:12px; margin-top:7px; }
+        .accent-blue { border-bottom:3px solid var(--blue); } .accent-cyan { border-bottom:3px solid var(--cyan); } .accent-green { border-bottom:3px solid var(--green); } .accent-orange { border-bottom:3px solid var(--orange); }
+        .section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:27px 0 13px; } .section-head span { color:var(--muted); font-size:12px; }
+        .source-card { position:relative; overflow:hidden; } .source-card:after { content:""; position:absolute; inset:auto -35px -50px auto; width:160px; height:160px; border-radius:50%; background:rgba(34,211,238,.08); }
+        .source-top { display:flex; align-items:center; justify-content:space-between; gap:12px; } .source-name { font-weight:800; font-size:17px; } .source-kwh { font-size:27px; font-weight:800; color:var(--cyan); } .national .source-kwh { color:var(--orange); }
+        .progress { height:9px; margin:17px 0 13px; border-radius:99px; background:#111c31; overflow:hidden; } .progress i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#06b6d4,#60a5fa); } .national .progress i { background:linear-gradient(90deg,#f59e0b,#fb7185); }
+        .source-details { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; } .detail-label { color:var(--muted); display:block; font-size:11px; margin-bottom:4px; } .detail-value { font-weight:700; font-size:14px; }
+        .status { display:inline-flex; align-items:center; gap:6px; color:#a7f3d0; font-size:12px; } .status.off { color:#fda4af; } .dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 10px var(--green); } .off .dot { background:var(--red); box-shadow:0 0 10px var(--red); }
+        .table-wrap { overflow:auto; } table { border-collapse:collapse; width:100%; min-width:760px; font-size:13px; } th,td { padding:12px 10px; border-bottom:1px solid rgba(148,163,184,.1); text-align:right; } th { color:var(--muted); font-size:11px; font-weight:600; } td strong { color:#e0e7ff; } .bar-cell { min-width:150px; } .mini-bar { height:7px; background:#14213a; border-radius:99px; overflow:hidden; } .mini-bar i { display:block; height:100%; background:linear-gradient(90deg,#22d3ee,#6366f1); border-radius:inherit; }
+        .empty { padding:28px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:var(--muted); line-height:1.8; } .error { color:#fecdd3; background:rgba(127,29,29,.2); border-color:rgba(251,113,133,.35); }
+        .config { margin-top:26px; } .config form { display:grid; grid-template-columns:1.2fr 1fr 1fr 1.2fr auto; gap:9px; align-items:end; } label { display:block; color:var(--muted); font-size:11px; margin-bottom:6px; } input { width:100%; } .hint { color:var(--muted); font-size:11px; line-height:1.7; margin:12px 0 0; }
+        @media(max-width:1000px) { .metrics { grid-template-columns:repeat(2,1fr); } .two { grid-template-columns:1fr; } .config form { grid-template-columns:repeat(2,1fr); } .config form .save { grid-column:span 2; } }
+        @media(max-width:600px) { .wrap { width:min(100% - 20px,1420px); padding-top:16px; } .topbar { align-items:flex-start; flex-direction:column; } .actions { justify-content:flex-start; } .metrics,.sources { grid-template-columns:1fr; } .source-details { grid-template-columns:1fr 1fr 1fr; } .config form { grid-template-columns:1fr; } .config form .save { grid-column:auto; } }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="topbar">
+        <div class="brand"><div class="brand-icon">⚡</div><div><h1>تحليلات الكهرباء</h1><p class="subtitle">استهلاك المولدة والتيار الوطني والأجهزة — {{version}}</p></div></div>
+        <div class="actions"><a class="btn" href="/dashboard">⌂ الرئيسية</a><button class="btn primary" onclick="loadElectricity()">↻ تحديث الآن</button></div>
+    </div>
+    <nav class="nav"><a class="btn" href="/dashboard">Home Server</a><a class="btn primary" href="/electricity">Electricity Analytics</a></nav>
+    <div class="actions" style="justify-content:flex-start;margin-bottom:20px;">
+        <button class="btn {{'primary' if data.period == 'day' else ''}}" onclick="setPeriod('day')">اليوم</button>
+        <button class="btn {{'primary' if data.period == 'month' else ''}}" onclick="setPeriod('month')">هذا الشهر</button>
+        <span id="updated" style="align-self:center;color:var(--muted);font-size:12px;">آخر تحديث: {{data.updated_at or '—'}}</span>
+    </div>
+    {% if not data.ok %}
+        <div class="card empty error"><strong>بيانات الكهرباء غير متاحة حالياً</strong><br>{{data.error}}<br><span style="color:var(--muted);">اضبط رابط الـ backend ومفاتيح المزامنة من قسم الإعدادات أدناه، أو حدد ملف JSON محلياً.</span></div>
+    {% else %}
+        {% set s = data.summary %}
+        <div class="grid metrics">
+            <div class="card metric accent-blue"><div class="metric-label">إجمالي الاستهلاك</div><div class="metric-value">{{'%.3f'|format(s.total_kwh)}} kWh</div><div class="metric-note">كل مصادر الكهرباء</div></div>
+            <div class="card metric accent-green"><div class="metric-label">إجمالي الكلفة</div><div class="metric-value">{{'{:,.0f}'.format(s.total_cost)}} IQD</div><div class="metric-note">حسب أسعار الكيلوواط الحالية</div></div>
+            <div class="card metric accent-cyan"><div class="metric-label">الأجهزة</div><div class="metric-value">{{s.active_devices}} / {{s.total_devices}}</div><div class="metric-note">شغالة حالياً / المجموع</div></div>
+            <div class="card metric accent-orange"><div class="metric-label">حالة المولدة</div><div class="metric-value" style="font-size:22px;">{{'شغالة' if s.generator_status == 'on' else 'متوقفة'}}</div><div class="metric-note">{{s.generator_rate|round(0)}} IQD لكل kWh</div></div>
+        </div>
+        <div class="section-head"><h2>مصادر الطاقة</h2><span>توزيع الاستهلاك والكلفة حسب المصدر</span></div>
+        <div class="grid sources">
+            <div class="card source-card generator"><div class="source-top"><div><div class="source-name">المولدة</div><div class="metric-note">{{s.generator_minutes}} دقيقة تشغيل محسوبة</div></div><div class="source-kwh">{{'%.3f'|format(s.generator_kwh)}} <small style="font-size:12px">kWh</small></div></div><div class="progress"><i style="width:{{s.generator_percent}}%"></i></div><div class="source-details"><div><span class="detail-label">النسبة</span><span class="detail-value">{{s.generator_percent}}%</span></div><div><span class="detail-label">الكلفة</span><span class="detail-value">{{'{:,.0f}'.format(s.generator_cost)}} IQD</span></div><div><span class="detail-label">السعر</span><span class="detail-value">{{s.generator_rate|round(0)}} / kWh</span></div></div></div>
+            <div class="card source-card national"><div class="source-top"><div><div class="source-name">التيار الوطني</div><div class="metric-note">{{s.national_minutes}} دقيقة تغذية محسوبة</div></div><div class="source-kwh">{{'%.3f'|format(s.national_kwh)}} <small style="font-size:12px">kWh</small></div></div><div class="progress"><i style="width:{{s.national_percent}}%"></i></div><div class="source-details"><div><span class="detail-label">النسبة</span><span class="detail-value">{{s.national_percent}}%</span></div><div><span class="detail-label">الكلفة</span><span class="detail-value">{{'{:,.0f}'.format(s.national_cost)}} IQD</span></div><div><span class="detail-label">السعر</span><span class="detail-value">{{s.national_rate|round(0)}} / kWh</span></div></div></div>
+        </div>
+        <div class="section-head"><h2>الأجهزة — من الأعلى إلى الأقل استهلاكاً</h2><span>الترتيب حسب kWh</span></div>
+        {% if data.devices %}<div class="card table-wrap"><table><thead><tr><th>#</th><th>الجهاز</th><th>التصنيف</th><th>القدرة</th><th>الاستهلاك</th><th>المولدة</th><th>الوطني</th><th>الكلفة</th><th>الحالة</th></tr></thead><tbody>{% set max_energy = data.devices[0].energy_kwh if data.devices else 1 %}{% for d in data.devices %}<tr><td>{{loop.index}}</td><td><strong>{{d.name}}</strong></td><td>{{d.category}}</td><td>{{d.power_watts|round(0)}} W</td><td class="bar-cell"><div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;"><span>{{'%.3f'|format(d.energy_kwh)}} kWh</span><span style="color:var(--muted);font-size:11px;">{{'%.1f'|format(d.energy_kwh / max_energy * 100)}}%</span></div><div class="mini-bar"><i style="width:{{(d.energy_kwh / max_energy * 100) if max_energy else 0}}%"></i></div></td><td>{{'%.3f'|format(d.generator_kwh)}} kWh</td><td>{{'%.3f'|format(d.national_kwh)}} kWh</td><td>{{'{:,.0f}'.format(d.cost)}} IQD</td><td><span class="status {{'' if d.is_on else 'off'}}"><i class="dot"></i>{{'شغال' if d.is_on else 'متوقف'}}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">لا توجد أجهزة أو سجلات استهلاك ضمن الفترة المحددة.</div>{% endif %}
+        <div class="section-head"><h2>تفاصيل إضافية</h2><span>قراءة مباشرة من حالة e-app المتزامنة</span></div>
+        <div class="grid two"><div class="card"><h3>جدول تشغيل المولدة</h3>{% if data.schedule %}<div class="table-wrap"><table style="min-width:300px"><thead><tr><th>من</th><th>إلى</th></tr></thead><tbody>{% for p in data.schedule %}<tr><td>{{p.onTime}}</td><td>{{p.offTime}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">لا يوجد جدول تشغيل محدد.</div>{% endif %}</div><div class="card"><h3>مصدر البيانات</h3><div class="detail-label">المصدر</div><div class="detail-value" style="margin-bottom:13px;">{{data.source}}</div><div class="detail-label">الفترة</div><div class="detail-value">{{'اليوم' if data.period == 'day' else 'هذا الشهر'}}</div><p class="hint">يتم احتساب الاستهلاك من سجلات الأجهزة، مع تقسيم الدقائق بين المولدة والوطني حسب مصدر السجل أو جدول المولدة.</p></div></div>
+    {% endif %}
+    <div class="card config"><div class="section-head" style="margin-top:0"><h2>إعداد مصدر بيانات الكهرباء</h2><span>يُحفظ محلياً على السيرفر</span></div><form action="/electricity/config" method="post"><div><label>Backend URL</label><input name="backend_url" value="{{data.config.backend_url}}" placeholder="http://127.0.0.1:3000"></div><div><label>Workspace Key</label><input name="workspace_key" value="" placeholder="أدخل workspace key"></div><div><label>Sync Key</label><input name="sync_key" type="password" value="" placeholder="أدخل sync key"></div><div><label>Local JSON state (اختياري)</label><input name="state_file" value="{{data.config.state_file}}" placeholder="/home/saif/electricity-state.json"></div><button class="btn green save" type="submit">حفظ الإعدادات</button></form><p class="hint">إذا كان e-app يعمل على نفس السيرفر استخدم غالباً <code>http://127.0.0.1:3000</code>. يمكن بدلاً من ذلك وضع نسخة JSON من ElectricityState في مسار محلي. مفاتيح المزامنة لا تُعرض بعد الحفظ.</p></div>
+</div>
+<script>
+let currentPeriod = '{{data.period}}';
+function setPeriod(period){ currentPeriod=period; history.replaceState({},'', '/electricity?period='+period); loadElectricity(); }
+async function loadElectricity(){
+  const url='/electricity/data?period='+encodeURIComponent(currentPeriod);
+  try { const r=await fetch(url,{headers:{'X-Requested-With':'XMLHttpRequest'}}); if(r.ok){ const html=await fetch('/electricity?period='+encodeURIComponent(currentPeriod),{headers:{'X-Requested-With':'XMLHttpRequest'}}); document.open(); document.write(await html.text()); document.close(); } } catch(e) { console.error(e); }
+}
+setInterval(()=>{ if(document.visibilityState==='visible') loadElectricity(); }, 60000);
+</script>
+</body></html>
+'''
 
 TERMINAL_RESULT_HTML = '''
 <!DOCTYPE html>

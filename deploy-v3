@@ -58,10 +58,15 @@ DASHBOARD_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(3
 DASHBOARD_PASSWORD=Sars87
 PIHOLE_PASSWORD=
 DASHBOARD_COOKIE_SECURE=0
+# Optional e-app electricity analytics source
+ELECTRICITY_BACKEND_URL=http://127.0.0.1:3000
+ELECTRICITY_WORKSPACE_KEY=
+ELECTRICITY_SYNC_KEY=
+ELECTRICITY_STATE_FILE=
 EOF
     chmod 600 /etc/dashboard/dashboard.env
     chown root:root /etc/dashboard/dashboard.env
-    echo "==> Created default /etc/dashboard/dashboard.env (Password: admin)"
+    echo "==> Created default /etc/dashboard/dashboard.env"
 fi
 
 # Ensure dashboard.service has EnvironmentFile
