@@ -1,5 +1,5 @@
 
-from flask import Flask, request, redirect, session, render_template_string, jsonify
+from flask import Flask, request, redirect, session, render_template_string, jsonify, Response
 import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
 from urllib.parse import urlencode, quote
 from datetime import datetime, timezone
@@ -3998,6 +3998,47 @@ def dashboard():
         repo_url=get_repo_url(),
         net_quota=network_traffic_quota()
     )
+
+
+@app.route("/api/trpc/<path:trpc_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def electricity_trpc_proxy(trpc_path):
+    """Proxy local e-app tRPC calls to the backend when clients use the dashboard origin."""
+    if not logged():
+        return jsonify({"error": "Not logged in"}), 401
+    if request.method == "OPTIONS":
+        return ("", 204)
+    backend = get_electricity_config().get("backend_url") or DEFAULT_ELECTRICITY_BACKEND_URL
+    target = f"{backend}/api/trpc/{trpc_path}"
+    if request.query_string:
+        target += "?" + request.query_string.decode("utf-8", "replace")
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length", "origin"}}
+    try:
+        req = urllib.request.Request(target, data=request.get_data() or None, method=request.method, headers=headers)
+        with urllib.request.urlopen(req, timeout=8) as upstream:
+            payload = upstream.read()
+            content_type = upstream.headers.get("Content-Type", "application/json")
+            return Response(payload, status=upstream.status, content_type=content_type)
+    except urllib.error.HTTPError as exc:
+        payload = exc.read()
+        return Response(payload, status=exc.code, content_type=exc.headers.get("Content-Type", "application/json"))
+    except Exception as exc:
+        return jsonify({"error": f"Electricity backend unavailable: {exc}"}), 502
+
+
+@app.route("/api/health", methods=["GET", "OPTIONS"])
+def electricity_health_proxy():
+    if not logged():
+        return jsonify({"error": "Not logged in"}), 401
+    if request.method == "OPTIONS":
+        return ("", 204)
+    backend = get_electricity_config().get("backend_url") or DEFAULT_ELECTRICITY_BACKEND_URL
+    try:
+        with urllib.request.urlopen(backend + "/api/health", timeout=5) as upstream:
+            return Response(upstream.read(), status=upstream.status, content_type=upstream.headers.get("Content-Type", "application/json"))
+    except urllib.error.HTTPError as exc:
+        return Response(exc.read(), status=exc.code, content_type=exc.headers.get("Content-Type", "application/json"))
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 @app.route("/electricity")
