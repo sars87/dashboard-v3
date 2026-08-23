@@ -97,14 +97,19 @@ fi
 set_env_value ALLOW_LOCAL_ELECTRICITY_LATEST "1"
 
 # Refresh the companion e-app backend when it is deployed on this server.
-EAPP_DIR="${E_APP_DIR:-$USER_HOME/deployments/e-app}"
-if [ -d "$EAPP_DIR/.git" ]; then
+EAPP_DIR="${E_APP_DIR:-}"
+if [ -z "$EAPP_DIR" ]; then
+    for candidate in "$USER_HOME/e-app" "$USER_HOME/deployments/e-app" "$USER_HOME/ihtisab-istiلاك-kahrabaa"; do
+        if [ -d "$candidate/.git" ]; then EAPP_DIR="$candidate"; break; fi
+    done
+fi
+if [ -n "$EAPP_DIR" ] && [ -d "$EAPP_DIR/.git" ]; then
     echo "==> Updating local e-app backend for automatic electricity access..."
     sudo -u "$TARGET_USER" bash -c "cd '$EAPP_DIR' && git reset --hard HEAD && git pull --ff-only origin main"
     if command -v pnpm >/dev/null 2>&1; then
         sudo -u "$TARGET_USER" bash -c "cd '$EAPP_DIR' && pnpm install --frozen-lockfile && pnpm build"
     fi
-    for svc in e-app.service eapp.service electricity-backend.service; do
+    for svc in electricity-server.service e-app.service eapp.service electricity-backend.service; do
         if systemctl list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "$svc"; then
             systemctl restart "$svc"
             break
