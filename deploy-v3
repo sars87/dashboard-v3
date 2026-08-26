@@ -52,6 +52,17 @@ else
     sudo -u "$TARGET_USER" git clone "$REPO_URL" "$TARGET_DIR"
 fi
 
+# The command installed in /usr/local/bin may be an older deploy-v3. After
+# pulling, replace it and re-execute once so newly added installation steps are
+# applied during this same user command rather than on a later run.
+if [ "${DEPLOY_V3_REEXEC:-0}" != "1" ] && [ -f "$TARGET_DIR/deploy-v3" ]; then
+    if [ "$0" != "/usr/local/bin/deploy-v3" ] || ! cmp -s "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3 2>/dev/null; then
+        echo "==> Updating deploy-v3 itself and continuing with the new version..."
+        install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
+        exec env DEPLOY_V3_REEXEC=1 /usr/local/bin/deploy-v3
+    fi
+fi
+
 if [ ! -f "$TARGET_DIR/dashboard.py" ]; then
     echo "Error: dashboard.py was not found in the repository. Deployment stopped."
     exit 1
