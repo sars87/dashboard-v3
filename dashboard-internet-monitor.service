@@ -1,0 +1,19 @@
+[Unit]
+Description=Dashboard Internet Outage Monitor
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=saif
+Group=saif
+ExecStart=/usr/bin/python3 /usr/local/bin/internet_monitor.py
+Environment=DASHBOARD_INTERNET_STATE_FILE=/home/saif/.dashboard_internet_outages.json
+Environment=DASHBOARD_INTERNET_CHECK_INTERVAL=15
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

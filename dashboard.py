@@ -27,11 +27,12 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v10.0"
+VERSION = "v10.1"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
 DEFAULT_ELECTRICITY_BACKEND_URL = "http://127.0.0.1:3000"
+INTERNET_STATE_FILE = os.environ.get("DASHBOARD_INTERNET_STATE_FILE", "/home/saif/.dashboard_internet_outages.json")
 
 
 def get_repo_url():
@@ -441,8 +442,8 @@ PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 # ==================================================
 def sh(cmd):
     try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
-    except:
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
         return ""
 
 # Simple TTL cache so the 10s auto-refresh doesn't rerun expensive commands.
@@ -592,10 +593,19 @@ def svc(name):
     return x if x else "unknown"
 
 def internet():
+    """Use the persistent monitor result first; never block the dashboard on WAN."""
     try:
-        socket.create_connection(("1.1.1.1", 53), 2)
-        return True
-    except:
+        with open(INTERNET_STATE_FILE, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+        checked_at = float(state.get("checked_at", 0))
+        if time.time() - checked_at <= 60 and isinstance(state.get("online"), bool):
+            return state["online"]
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+    try:
+        with socket.create_connection(("1.1.1.1", 53), 0.5):
+            return True
+    except OSError:
         return False
 
 def pihole():
@@ -916,7 +926,7 @@ def _ph_auth():
             PIHOLE_API + "/auth",
             data=json.dumps({"password": PIHOLE_PW}).encode(),
             headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=4) as r:
+        with urllib.request.urlopen(req, timeout=1.5) as r:
             _PH_SID["sid"] = json.load(r).get("session", {}).get("sid")
     except:
         _PH_SID["sid"] = None
@@ -934,7 +944,7 @@ def _ph_get(path):
             req = urllib.request.Request(
                 PIHOLE_API + path,
                 headers={"X-FTL-SID": sid, "sid": sid, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=4) as r:
+            with urllib.request.urlopen(req, timeout=1.5) as r:
                 payload = json.load(r)
                 if isinstance(payload, dict) and payload.get("error"):
                     raise RuntimeError(str(payload["error"]))
@@ -1174,6 +1184,59 @@ def _updates_count():
         return f"Updates Available ({n})"
     except:
         return "Update OS"
+
+def _format_outage_duration(total_seconds):
+    try:
+        total = max(0, int(round(float(total_seconds))))
+    except (TypeError, ValueError):
+        total = 0
+    days, remainder = divmod(total, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{days} يوم، {hours} ساعة، {minutes} دقيقة، {seconds} ثانية"
+
+
+def internet_outage_rows(limit=20):
+    """Read outage history written by internet_monitor.py without blocking on WAN."""
+    try:
+        with open(INTERNET_STATE_FILE, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+        if not isinstance(state, dict):
+            return []
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return []
+
+    rows = []
+    for item in state.get("outages", []) if isinstance(state.get("outages"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        started = item.get("started_ts")
+        ended = item.get("ended_ts")
+        try:
+            duration = max(0, float(item.get("duration_seconds", float(ended) - float(started))))
+        except (TypeError, ValueError):
+            duration = 0
+        rows.append({
+            "started_at": item.get("started_at") or "—",
+            "ended_at": item.get("ended_at") or "—",
+            "duration": _format_outage_duration(duration),
+            "ongoing": False,
+        })
+
+    current = state.get("current")
+    if isinstance(current, dict) and current.get("started_ts"):
+        try:
+            duration = max(0, time.time() - float(current["started_ts"]))
+        except (TypeError, ValueError):
+            duration = 0
+        rows.insert(0, {
+            "started_at": current.get("started_at") or "—",
+            "ended_at": "مستمر حالياً",
+            "duration": _format_outage_duration(duration),
+            "ongoing": True,
+        })
+    return rows[:max(1, min(int(limit), 200))]
+
 
 # ==================================================
 # HTML - MODERN DESIGN
@@ -3394,9 +3457,41 @@ HTML = '''
             </div>
         </section>
 
+        <!-- Internet outage history -->
+        <section class="section" id="internet_outages_section" style="margin-top:24px;">
+            <div class="section-header">
+                <div>
+                    <div class="section-kicker">NETWORK RELIABILITY</div>
+                    <h2 class="section-title">سجل انقطاعات الإنترنت</h2>
+                    <p class="section-subtitle">يُسجّل تلقائياً حتى عند إغلاق الداشبورد</p>
+                </div>
+                <span class="status-badge {{'on' if net else 'off'}}" id="outage_live_status">{{'متصل' if net else 'غير متصل'}}</span>
+            </div>
+            <div class="games-card" style="overflow:hidden;">
+                <div style="overflow-x:auto;">
+                    <table class="sthist" style="min-width:680px;">
+                        <thead><tr><th>الحالة</th><th>وقت الانقطاع</th><th>وقت الرجوع</th><th>مدة الانقطاع</th></tr></thead>
+                        <tbody id="internet_outage_rows">
+                        {% for outage in outages %}
+                            <tr>
+                                <td><span class="status-badge {{'off' if outage.ongoing else 'on'}}">{{'مستمر' if outage.ongoing else 'مكتمل'}}</span></td>
+                                <td class="t">{{outage.started_at}}</td>
+                                <td class="t">{{outage.ended_at}}</td>
+                                <td class="t">{{outage.duration}}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:22px;">لا توجد انقطاعات مسجلة بعد</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:12px;color:var(--text-muted);font-size:12px;">الفحص يعمل في الخلفية كل 15 ثانية، والسجل محفوظ على القرص ويستمر بعد إعادة تشغيل السيرفر.</div>
+            </div>
+        </section>
+
         <!-- Footer -->
         <footer class="footer" id="dash_footer">
-            Internet: <span class="{{'' if net else 'offline'}}">{{'Online' if net else 'Offline'}}</span> • Last Boot: {{reboot}} • {{version}}
+            Internet: <span class="{{'' if net else 'offline'}}" id="footer_net_status">{{'Online' if net else 'Offline'}}</span> • Last Boot: {{reboot}} • {{version}}
         </footer>
     </div>
 
@@ -3543,13 +3638,15 @@ HTML = '''
                 const pollInterval = setInterval(async () => {
                     attempts++;
                     try {
-                        const r = await fetch('/dashboard', {cache:'no-store'});
-                        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
-                        const newDown = doc.getElementById('sp_down').innerHTML;
-                        const newUp = doc.getElementById('sp_up').innerHTML;
-                        const newMeta = doc.getElementById('sp_meta').innerHTML;
+                        const r = await fetch('/api/quick-status', {cache:'no-store'});
+                        if(!r.ok) throw new Error('Status request failed');
+                        const status = await r.json();
+                        const result = status.speedtest || {};
+                        const newDown = escapeHtml(result.down || 'N/A') + ' <small style="font-size:12px;font-weight:500;">Mbps</small>';
+                        const newUp = escapeHtml(result.up || 'N/A') + ' <small style="font-size:12px;font-weight:500;">Mbps</small>';
+                        const newMeta = '<span>Ping ' + escapeHtml(result.ping || 'N/A') + ' ms</span><span>' + escapeHtml(result.time || 'Unavailable') + '</span>';
                         
-                        if(!newDown.includes('Testing') && !newDown.includes('N/A') && attempts > 3) {
+                        if(!String(result.down || '').includes('N/A') && !String(result.down || '').includes('Testing') && attempts > 3) {
                             clearInterval(pollInterval);
                             spDown.innerHTML = newDown;
                             spUp.innerHTML = newUp;
@@ -3578,24 +3675,62 @@ HTML = '''
             }
         }
 
-        // Live refresh: update only the dynamic regions every 10s, no full reload
-        const REFRESH_IDS = ['hdr_uptime','hdr_status','sp_down','sp_up','sp_meta',
-            'st_yt','st_ph','st_vpn','st_bot','st_jelly','st_fb','st_ts',
-            'ph_grid','topdom_list','topcli_list','groups_grid','speedhist',
-            'res_grid','adult_list','upd_label','dash_footer'];
+        // Lightweight local refresh: never reload the full dashboard. This keeps
+        // the UI responsive when the WAN is down or a service is slow.
+        function statusBadge(value){
+            const active = ['active','Enabled','online','Online'].includes(String(value));
+            return '<span class="status-badge ' + (active ? 'on' : 'off') + '">' + escapeHtml(value || 'unknown') + '</span>';
+        }
+        function updateOutageRows(outages){
+            const rows = document.getElementById('internet_outage_rows');
+            if(!rows) return;
+            if(!outages || !outages.length){
+                rows.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:22px;">لا توجد انقطاعات مسجلة بعد</td></tr>';
+                return;
+            }
+            rows.innerHTML = outages.map(o => '<tr><td>' +
+                statusBadge(o.ongoing ? 'مستمر' : 'مكتمل') + '</td><td class="t">' +
+                escapeHtml(o.started_at) + '</td><td class="t">' + escapeHtml(o.ended_at) +
+                '</td><td class="t">' + escapeHtml(o.duration) + '</td></tr>').join('');
+        }
+        function setMetric(id, value, suffix){
+            const el = document.getElementById(id); if(el) el.textContent = String(value) + (suffix || '');
+        }
         async function refreshData(){
             try {
-                const r = await fetch('/dashboard', {cache:'no-store'});
+                const r = await fetch('/api/quick-status', {cache:'no-store'});
+                if(r.status === 401){ location.href = '/'; return; }
                 if(!r.ok) return;
-                const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
-                if(!doc.getElementById('res_grid')){ location.reload(); return; }  // session expired -> show login
-                for(const id of REFRESH_IDS){
-                    const cur = document.getElementById(id), nxt = doc.getElementById(id);
-                    if(cur && nxt && cur.outerHTML !== nxt.outerHTML) cur.outerHTML = nxt.outerHTML;
+                const d = await r.json();
+                setMetric('hdr_uptime', 'up ' + (d.uptime || '—'));
+                const header = document.getElementById('hdr_status');
+                if(header){
+                    header.innerHTML = '<div class="status-dot ' + (d.internet ? 'online' : 'offline') + '"></div><span>' + (d.internet ? 'Online' : 'Offline') + '</span>';
                 }
-            } catch(e){}
+                const footer = document.getElementById('footer_net_status');
+                if(footer){ footer.textContent = d.internet ? 'Online' : 'Offline'; footer.className = d.internet ? '' : 'offline'; }
+                const live = document.getElementById('outage_live_status');
+                if(live){ live.textContent = d.internet ? 'متصل' : 'غير متصل'; live.className = 'status-badge ' + (d.internet ? 'on' : 'off'); }
+                setMetric('perf_cpu', d.cpu, '%'); setMetric('perf_ram', d.ram, '%'); setMetric('perf_disk', d.disk, '%'); setMetric('perf_temp', d.temp, '°C');
+                for(const pair of [['bar_cpu',d.cpu],['bar_ram',d.ram],['bar_disk',d.disk],['bar_temp',d.temp]]){
+                    const bar = document.getElementById(pair[0]); if(bar) bar.style.width = Math.max(0, Math.min(100, Number(pair[1]) || 0)) + '%';
+                }
+                const services = d.services || {};
+                for(const key of ['yt','ph','vpn','bot','jelly','fb','ts']){
+                    const el = document.getElementById('st_' + key);
+                    if(el && services[key] !== undefined){
+                        const val = String(services[key]);
+                        el.textContent = key === 'jelly' ? 'Jelly: ' + val : key === 'fb' ? 'FTP: ' + val : val;
+                        el.className = 'status-badge ' + (['active','Enabled'].includes(val) ? 'on' : 'off');
+                    }
+                }
+                const sp = d.speedtest || {};
+                setMetric('sp_down', sp.down || 'N/A'); setMetric('sp_up', sp.up || 'N/A');
+                updateOutageRows(d.outages || []);
+            } catch(e) { /* dashboard remains usable while the server is busy */ }
         }
         setInterval(refreshData, 10000);
+        refreshData();
 
         // Live bandwidth meter: poll /net, compute byte deltas -> throughput
         let _lastNet = null;
@@ -3996,8 +4131,53 @@ def dashboard():
         tailscale_nodes=parse_tailscale_nodes(),
         tailscale_traffic=tailscale_traffic(),
         repo_url=get_repo_url(),
-        net_quota=network_traffic_quota()
+        net_quota=network_traffic_quota(),
+        outages=internet_outage_rows()
     )
+
+
+@app.route("/api/internet-outages")
+def internet_outages_api():
+    if not logged():
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+    return jsonify({"ok": True, "outages": internet_outage_rows()})
+
+
+@app.route("/api/quick-status")
+def quick_status_api():
+    """Small local-only refresh payload; avoid rendering the full dashboard."""
+    if not logged():
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+    service_units = {
+        "yt": None,
+        "ph": None,
+        "vpn": "openvpn-client@proton.service",
+        "bot": "tg-control.timer",
+        "jelly": "jellyfin",
+        "fb": "filebrowser",
+        "ts": "tailscaled",
+    }
+    services = {}
+    for key, unit in service_units.items():
+        if key == "yt":
+            services[key] = cached("quick_yt", 10, youtube_status)
+        elif key == "ph":
+            services[key] = cached("quick_ph", 10, pihole)
+        else:
+            services[key] = cached("quick_svc_" + key, 10, lambda unit=unit: svc(unit))
+    return jsonify({
+        "ok": True,
+        "internet": internet(),
+        "uptime": cached("quick_uptime", 3, uptime),
+        "cpu": cached("quick_cpu", 3, cpu),
+        "ram": cached("quick_ram", 3, ram),
+        "disk": cached("quick_disk", 5, disk),
+        "temp": cached("quick_temp", 3, temp),
+        "battery": cached("quick_battery", 5, battery),
+        "speedtest": cached("quick_speedtest", 2, speedtest),
+        "services": services,
+        "outages": internet_outage_rows(),
+    })
 
 
 @app.route("/api/trpc/<path:trpc_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])

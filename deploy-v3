@@ -58,7 +58,7 @@ if [ ! -f "$TARGET_DIR/dashboard.py" ]; then
 fi
 
 echo "==> [3/6] Verifying Python syntax..."
-python3 -B -c "import pathlib; compile(pathlib.Path('$TARGET_DIR/dashboard.py').read_text(), 'dashboard.py', 'exec')"
+python3 -B -c "import pathlib; [compile(pathlib.Path(p).read_text(), p, 'exec') for p in ('$TARGET_DIR/dashboard.py', '$TARGET_DIR/internet_monitor.py')]"
 
  echo "==> [4/6] Installing dashboard.py..."
 cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
@@ -95,6 +95,12 @@ if ! grep -q '^ELECTRICITY_STATE_FILE=' "$ENV_FILE"; then
     set_env_value ELECTRICITY_STATE_FILE ""
 fi
 set_env_value ALLOW_LOCAL_ELECTRICITY_LATEST "1"
+if ! grep -q '^DASHBOARD_INTERNET_STATE_FILE=' "$ENV_FILE"; then
+    set_env_value DASHBOARD_INTERNET_STATE_FILE "$USER_HOME/.dashboard_internet_outages.json"
+fi
+if ! grep -q '^DASHBOARD_INTERNET_CHECK_INTERVAL=' "$ENV_FILE"; then
+    set_env_value DASHBOARD_INTERNET_CHECK_INTERVAL "15"
+fi
 
 # Refresh the companion e-app backend when it is deployed on this server.
 EAPP_DIR="${E_APP_DIR:-}"
@@ -119,33 +125,33 @@ else
     echo "==> e-app backend directory not found; dashboard will use existing backend or local JSON."
 fi
 
-# Ask for the sync key only when it is not already in the environment or saved dashboard config.
-SYNC_KEY="$(get_env_value ELECTRICITY_SYNC_KEY)"
-SAVED_CONFIG="$USER_HOME/.dashboard_electricity_config.json"
-if [ -z "$SYNC_KEY" ] && [ -f "$SAVED_CONFIG" ] && grep -q '"sync_key"[[:space:]]*:[[:space:]]*"[^"]\+' "$SAVED_CONFIG"; then
-    echo "==> Existing electricity Sync Key found in the dashboard config. Keeping it."
-else
-    if [ -z "$SYNC_KEY" ] && [ -t 0 ]; then
-        printf "Enter e-app Sync Key (press Enter to skip and configure later): "
-        IFS= read -r -s NEW_SYNC_KEY
-        printf '\n'
-        if [ -n "$NEW_SYNC_KEY" ]; then
-            set_env_value ELECTRICITY_SYNC_KEY "$NEW_SYNC_KEY"
-            echo "==> Electricity Sync Key saved securely in $ENV_FILE."
-        else
-            set_env_value ELECTRICITY_SYNC_KEY ""
-            echo "==> Sync Key skipped; add it later in /electricity."
-        fi
-    elif ! grep -q '^ELECTRICITY_SYNC_KEY=' "$ENV_FILE"; then
-        set_env_value ELECTRICITY_SYNC_KEY ""
-        echo "==> Sync Key not supplied in non-interactive mode; configure it later in /electricity."
-    fi
+# Zero-input deployment: local e-app access works without a Sync Key. Keep any
+# existing key, otherwise leave it empty and use the local latest endpoint.
+if ! grep -q '^ELECTRICITY_SYNC_KEY=' "$ENV_FILE"; then
+    set_env_value ELECTRICITY_SYNC_KEY ""
 fi
 
 if [ -f "$SERVICE_FILE" ] && ! grep -q '^EnvironmentFile=/etc/dashboard/dashboard.env' "$SERVICE_FILE"; then
     sed -i '/^\[Service\]/a EnvironmentFile=/etc/dashboard/dashboard.env' "$SERVICE_FILE"
 fi
+
+# Install the persistent internet outage monitor and its service. It records
+# outages even when the dashboard is closed and survives dashboard restarts.
+if [ -f "$TARGET_DIR/internet_monitor.py" ] && [ -f "$TARGET_DIR/dashboard-internet-monitor.service" ]; then
+    echo "==> Installing background internet outage monitor..."
+    install -m 0755 "$TARGET_DIR/internet_monitor.py" /usr/local/bin/internet_monitor.py
+    sed -e "s/^User=saif$/User=$TARGET_USER/" \
+        -e "s/^Group=saif$/Group=$TARGET_USER/" \
+        -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 /usr/local/bin/internet_monitor.py#" \
+        -e "s#^Environment=DASHBOARD_INTERNET_STATE_FILE=.*#Environment=DASHBOARD_INTERNET_STATE_FILE=$USER_HOME/.dashboard_internet_outages.json#" \
+        "$TARGET_DIR/dashboard-internet-monitor.service" > /etc/systemd/system/dashboard-internet-monitor.service
+    chmod 644 /etc/systemd/system/dashboard-internet-monitor.service
+fi
+
 systemctl daemon-reload
+if [ -f /etc/systemd/system/dashboard-internet-monitor.service ]; then
+    systemctl enable --now dashboard-internet-monitor.service
+fi
 
  echo "==> [6/6] Restarting dashboard service..."
 if systemctl restart dashboard.service; then
@@ -158,6 +164,6 @@ fi
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "v10.0 Deployed Successfully for $TARGET_USER"
+echo "v10.1 Deployed Successfully for $TARGET_USER"
 echo "Electricity analytics: http://127.0.0.1:8088/electricity"
 echo "=========================================================="
