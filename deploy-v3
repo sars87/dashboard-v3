@@ -52,17 +52,6 @@ else
     sudo -u "$TARGET_USER" git clone "$REPO_URL" "$TARGET_DIR"
 fi
 
-# The command installed in /usr/local/bin may be an older deploy-v3. After
-# pulling, replace it and re-execute once so newly added installation steps are
-# applied during this same user command rather than on a later run.
-if [ "${DEPLOY_V3_REEXEC:-0}" != "1" ] && [ -f "$TARGET_DIR/deploy-v3" ]; then
-    if [ "$0" != "/usr/local/bin/deploy-v3" ] || ! cmp -s "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3 2>/dev/null; then
-        echo "==> Updating deploy-v3 itself and continuing with the new version..."
-        install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
-        exec env DEPLOY_V3_REEXEC=1 /usr/local/bin/deploy-v3
-    fi
-fi
-
 if [ ! -f "$TARGET_DIR/dashboard.py" ]; then
     echo "Error: dashboard.py was not found in the repository. Deployment stopped."
     exit 1
@@ -148,21 +137,21 @@ fi
 
 # Install the persistent internet outage monitor and its service. It records
 # outages even when the dashboard is closed and survives dashboard restarts.
-if [ -f "$TARGET_DIR/internet_monitor.py" ] && [ -f "$TARGET_DIR/dashboard-internet-monitor.service" ]; then
-    echo "==> Installing background internet outage monitor..."
-    install -m 0755 "$TARGET_DIR/internet_monitor.py" /usr/local/bin/internet_monitor.py
-    sed -e "s/^User=saif$/User=$TARGET_USER/" \
-        -e "s/^Group=saif$/Group=$TARGET_USER/" \
-        -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 /usr/local/bin/internet_monitor.py#" \
-        -e "s#^Environment=DASHBOARD_INTERNET_STATE_FILE=.*#Environment=DASHBOARD_INTERNET_STATE_FILE=$USER_HOME/.dashboard_internet_outages.json#" \
-        "$TARGET_DIR/dashboard-internet-monitor.service" > /etc/systemd/system/dashboard-internet-monitor.service
-    chmod 644 /etc/systemd/system/dashboard-internet-monitor.service
+if [ ! -f "$TARGET_DIR/internet_monitor.py" ] || [ ! -f "$TARGET_DIR/dashboard-internet-monitor.service" ]; then
+    echo "Error: outage monitor files are missing from the pulled repository. Deployment stopped."
+    exit 1
 fi
+echo "==> Installing background internet outage monitor..."
+install -m 0755 "$TARGET_DIR/internet_monitor.py" /usr/local/bin/internet_monitor.py
+sed -e "s/^User=saif$/User=$TARGET_USER/" \
+    -e "s/^Group=saif$/Group=$TARGET_USER/" \
+    -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 /usr/local/bin/internet_monitor.py#" \
+    -e "s#^Environment=DASHBOARD_INTERNET_STATE_FILE=.*#Environment=DASHBOARD_INTERNET_STATE_FILE=$USER_HOME/.dashboard_internet_outages.json#" \
+    "$TARGET_DIR/dashboard-internet-monitor.service" > /etc/systemd/system/dashboard-internet-monitor.service
+chmod 644 /etc/systemd/system/dashboard-internet-monitor.service
 
 systemctl daemon-reload
-if [ -f /etc/systemd/system/dashboard-internet-monitor.service ]; then
-    systemctl enable --now dashboard-internet-monitor.service
-fi
+systemctl enable --now dashboard-internet-monitor.service
 
  echo "==> [6/6] Restarting dashboard service..."
 if systemctl restart dashboard.service; then
@@ -175,6 +164,6 @@ fi
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "v10.2 Deployed Successfully for $TARGET_USER"
+echo "v10.3 Deployed Successfully for $TARGET_USER"
 echo "Electricity analytics: http://127.0.0.1:8088/electricity"
 echo "=========================================================="
