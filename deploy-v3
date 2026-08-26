@@ -175,6 +175,6 @@ fi
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "v10.1 Deployed Successfully for $TARGET_USER"
+echo "v10.2 Deployed Successfully for $TARGET_USER"
 echo "Electricity analytics: http://127.0.0.1:8088/electricity"
 echo "=========================================================="
