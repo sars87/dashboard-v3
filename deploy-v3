@@ -99,7 +99,7 @@ if ! grep -q '^DASHBOARD_INTERNET_STATE_FILE=' "$ENV_FILE"; then
     set_env_value DASHBOARD_INTERNET_STATE_FILE "$USER_HOME/.dashboard_internet_outages.json"
 fi
 if ! grep -q '^DASHBOARD_INTERNET_CHECK_INTERVAL=' "$ENV_FILE"; then
-    set_env_value DASHBOARD_INTERNET_CHECK_INTERVAL "15"
+    set_env_value DASHBOARD_INTERNET_CHECK_INTERVAL "10"
 fi
 
 # Refresh the companion e-app backend when it is deployed on this server.
@@ -164,6 +164,6 @@ fi
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "v10.3 Deployed Successfully for $TARGET_USER"
+echo "v10.4 Deployed Successfully for $TARGET_USER"
 echo "Electricity analytics: http://127.0.0.1:8088/electricity"
 echo "=========================================================="
