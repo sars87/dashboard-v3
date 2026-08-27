@@ -1,6 +1,7 @@
 
 from flask import Flask, request, redirect, session, render_template_string, jsonify, Response
 import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode, quote
 from datetime import datetime, timezone
 
@@ -27,7 +28,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v10.1"
+VERSION = "v10.5"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
@@ -442,7 +443,7 @@ PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 # ==================================================
 def sh(cmd):
     try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3).stdout.strip()
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=1).stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return ""
 
@@ -958,7 +959,7 @@ def _pihole_sql(sql, database="/etc/pihole/pihole-FTL.db"):
     try:
         result = subprocess.run(
             ["sudo", "sqlite3", "-separator", "|", database, sql],
-            capture_output=True, text=True, timeout=10, check=False)
+            capture_output=True, text=True, timeout=2, check=False)
         return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -1100,7 +1101,7 @@ FROM queries WHERE {' AND '.join(clauses)};
     try:
         result = subprocess.run(
             ["sudo", "sqlite3", "-separator", "|", "/etc/pihole/pihole-FTL.db", sql],
-            capture_output=True, text=True, timeout=10, check=False)
+            capture_output=True, text=True, timeout=2, check=False)
         values = result.stdout.strip().split("|")
         return {"blocked": int(values[0] or 0), "allowed": int(values[1] or 0)}
     except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
@@ -1124,7 +1125,7 @@ FROM queries q WHERE %s ORDER BY q.timestamp DESC LIMIT %d;
     try:
         result = subprocess.run(
             ["sudo", "sqlite3", "-separator", "|", "/etc/pihole/pihole-FTL.db", sql],
-            capture_output=True, text=True, timeout=10, check=False)
+            capture_output=True, text=True, timeout=2, check=False)
         blocked = {1, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 18}
         rows = []
         for line in result.stdout.splitlines():
@@ -4080,59 +4081,80 @@ def login():
 def dashboard():
     if not logged():
         return redirect("/")
-    queries, query_domain, query_client = recent_queries(
-        request.args.get("domain", ""), request.args.get("client", ""))
+
+    # Build independent dashboard cards concurrently. This prevents several
+    # short local/network timeouts from accumulating during the first load.
+    domain = request.args.get("domain", "")
+    client = request.args.get("client", "")
+    jobs = {
+        "recent": (recent_queries, (domain, client)),
+        "net": (internet, ()),
+        "vpn": (svc, ("openvpn-client@proton.service",)),
+        "ph": (pihole, ()),
+        "pause": (pihole_pause_state, ()),
+        "summary": (query_counts_24h, (domain, client)),
+        "phstats": (pihole_stats, ()),
+        "topdom": (top_blocked, ()),
+        "topcli": (top_clients, ()),
+        "adult": (adult_attempts, ()),
+        "yt": (youtube_status, ()),
+        "bot": (svc, ("tg-control.timer",)),
+        "jelly": (svc, ("jellyfin",)),
+        "fb": (svc, ("filebrowser",)),
+        "tailscale": (svc, ("tailscaled",)),
+        "uptime": (uptime, ()),
+        "cpu": (cpu, ()),
+        "ram": (ram, ()),
+        "disk": (disk, ()),
+        "temp": (temp, ()),
+        "reboot": (reboot_info, ()),
+        "upd": (updates_count, ()),
+        "groups": (pihole_groups, ()),
+        "spd": (speedtest, ()),
+        "spdhist": (speed_history, ()),
+        "bat": (battery, ()),
+        "docker": (docker_containers, ()),
+        "cronjobs": (cron_jobs, ()),
+        "fw_status": (firewall_status, ()),
+        "ssh_failures": (ssh_failed_attempts, ()),
+        "arp_devices": (lan_arp_scan, ()),
+        "net_conns": (active_connections, ()),
+        "top_procs": (top_heavy_processes, ()),
+        "kernel_info": (system_kernel_info, ()),
+        "open_ports": (open_ports_scan, ()),
+        "sys_services": (systemd_services_list, ()),
+        "tailscale_details": (tailscale_status_details, ()),
+        "tailscale_nodes": (parse_tailscale_nodes, ()),
+        "tailscale_traffic": (tailscale_traffic, ()),
+        "repo_url": (get_repo_url, ()),
+        "net_quota": (network_traffic_quota, ()),
+        "outages": (internet_outage_rows, ())
+    }
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        futures = {key: executor.submit(fn, *args) for key, (fn, args) in jobs.items()}
+        values = {key: future.result() for key, future in futures.items()}
+
+    queries, query_domain, query_client = values["recent"]
     query_return = "/dashboard?" + urlencode({"domain": query_domain, "client": query_client})
     return render_template_string(
         HTML,
         version=VERSION,
-        net=internet(),
-       vpn=svc("openvpn-client@proton.service"),
-        ph=pihole(),
-        pause=pihole_pause_state(),
-        queries=queries,
-        query_domain=query_domain,
-        query_client=query_client,
-        query_summary=query_counts_24h(query_domain, query_client),
-        query_return=query_return,
-        phstats=pihole_stats(),
-        topdom=top_blocked(),
-        topcli=top_clients(),
-        adult=adult_attempts(),
-        yt=youtube_status(),
-        bot=svc("tg-control.timer"),
-        jelly=svc("jellyfin"),
-        fb=svc("filebrowser"),
-        tailscale=svc("tailscaled"),
-        uptime=uptime(),
-        cpu=cpu(),
-        ram=ram(),
-        disk=disk(),
-        temp=temp(),
-        reboot=reboot_info(),
-        upd=updates_count(),
-        groups=pihole_groups(),
-        spd=speedtest(),
-        spdhist=speed_history(),
-        bat=battery(),
-        docker=docker_containers(),
-        cronjobs=cron_jobs(),
-        quick_links=get_quick_links(),
-        secure_notes=get_secure_notes(),
-        fw_status=firewall_status(),
-        ssh_failures=ssh_failed_attempts(),
-        arp_devices=lan_arp_scan(),
-        net_conns=active_connections(),
-        top_procs=top_heavy_processes(),
-        kernel_info=system_kernel_info(),
-        open_ports=open_ports_scan(),
-        sys_services=systemd_services_list(),
-        tailscale_details=tailscale_status_details(),
-        tailscale_nodes=parse_tailscale_nodes(),
-        tailscale_traffic=tailscale_traffic(),
-        repo_url=get_repo_url(),
-        net_quota=network_traffic_quota(),
-        outages=internet_outage_rows()
+        net=values["net"], vpn=values["vpn"], ph=values["ph"], pause=values["pause"],
+        queries=queries, query_domain=query_domain, query_client=query_client,
+        query_summary=values["summary"], query_return=query_return,
+        phstats=values["phstats"], topdom=values["topdom"], topcli=values["topcli"],
+        adult=values["adult"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
+        fb=values["fb"], tailscale=values["tailscale"], uptime=values["uptime"],
+        cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
+        reboot=values["reboot"], upd=values["upd"], groups=values["groups"], spd=values["spd"],
+        spdhist=values["spdhist"], bat=values["bat"], docker=values["docker"],
+        cronjobs=values["cronjobs"], quick_links=get_quick_links(), secure_notes=get_secure_notes(),
+        fw_status=values["fw_status"], ssh_failures=values["ssh_failures"],
+        arp_devices=values["arp_devices"], net_conns=values["net_conns"], top_procs=values["top_procs"],
+        kernel_info=values["kernel_info"], open_ports=values["open_ports"],
+        sys_services=values["sys_services"], tailscale_details=values["tailscale_details"],
+        tailscale_nodes=values["tailscale_nodes"], tailscale_traffic=values["tailscale_traffic"],
+        repo_url=values["repo_url"], net_quota=values["net_quota"], outages=values["outages"]
     )
 
 
