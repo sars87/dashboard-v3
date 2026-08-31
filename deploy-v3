@@ -50,13 +50,20 @@ if [ -d "$TARGET_DIR/.git" ]; then
     chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_DIR"
 fi
 
-if [ -d "$TARGET_DIR/.git" ]; then
-    echo "==> [2/6] Pulling latest changes from GitHub as $TARGET_USER..."
-    sudo -u "$TARGET_USER" bash -c "cd '$TARGET_DIR' && git remote set-url origin '$REPO_URL' && git reset --hard HEAD && git pull --ff-only origin main"
-else
-    echo "==> [2/6] Cloning repository from GitHub as $TARGET_USER..."
-    sudo -u "$TARGET_USER" git clone "$REPO_URL" "$TARGET_DIR"
+echo "==> [2/6] Downloading a clean repository copy from GitHub as $TARGET_USER..."
+# Do not write into the old .git directory. It may contain root-owned objects
+# from a previous sudo deployment and can remain unwritable even after chown.
+TMP_DIR="$(mktemp -d "$USER_HOME/deployments/dashboard-v3.new.XXXXXX")"
+chown "$TARGET_USER:$TARGET_USER" "$TMP_DIR"
+if ! sudo -u "$TARGET_USER" git clone --no-hardlinks "$REPO_URL" "$TMP_DIR/repo"; then
+    rm -rf "$TMP_DIR"
+    echo "Error: clean repository clone failed; existing deployment was preserved."
+    exit 1
 fi
+chown -R "$TARGET_USER:$TARGET_USER" "$TMP_DIR/repo"
+rm -rf "$TARGET_DIR"
+mv "$TMP_DIR/repo" "$TARGET_DIR"
+rm -rf "$TMP_DIR"
 
 if [ ! -f "$TARGET_DIR/dashboard.py" ]; then
     echo "Error: dashboard.py was not found in the repository. Deployment stopped."
