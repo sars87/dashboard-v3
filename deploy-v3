@@ -171,11 +171,12 @@ fi
 install -m 0755 "$TARGET_DIR/youtube_policy.py" /usr/local/bin/youtube_policy.py
 sed -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 /usr/local/bin/youtube_policy.py apply#" "$TARGET_DIR/dashboard-youtube-policy.service" > /etc/systemd/system/dashboard-youtube-policy.service
 install -m 0644 "$TARGET_DIR/dashboard-youtube-policy.timer" /etc/systemd/system/dashboard-youtube-policy.timer
-if [ ! -f "$USER_HOME/.dashboard_youtube_policy.json" ]; then
-    printf '%s\n' '{"mode":"all","groups":[],"ips":[],"schedule_enabled":false,"start":"16:00","end":"22:00","days":[0,1,2,3,4,5,6],"manual_enabled":false}' > "$USER_HOME/.dashboard_youtube_policy.json"
-    chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/.dashboard_youtube_policy.json"
-    chmod 0640 "$USER_HOME/.dashboard_youtube_policy.json"
+YOUTUBE_POLICY_FILE="/etc/dashboard/youtube_policy.json"
+if [ ! -f "$YOUTUBE_POLICY_FILE" ]; then
+    printf '%s\n' '{"mode":"all","groups":[],"ips":[],"schedule_enabled":false,"start":"16:00","end":"22:00","days":[0,1,2,3,4,5,6],"manual_enabled":false}' > "$YOUTUBE_POLICY_FILE"
 fi
+chown root:root "$YOUTUBE_POLICY_FILE"
+chmod 0640 "$YOUTUBE_POLICY_FILE"
 systemctl daemon-reload
 systemctl enable --now dashboard-internet-monitor.service dashboard-youtube-policy.timer
 python3 /usr/local/bin/youtube_policy.py init || true

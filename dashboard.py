@@ -1,6 +1,6 @@
 
 from flask import Flask, request, redirect, session, render_template_string, jsonify, Response
-import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
+import os, subprocess, socket, re, json, urllib.request, time, shutil, threading, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode, quote
 from datetime import datetime, timezone
@@ -34,7 +34,7 @@ DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
 DEFAULT_ELECTRICITY_BACKEND_URL = "http://127.0.0.1:3000"
 INTERNET_STATE_FILE = os.environ.get("DASHBOARD_INTERNET_STATE_FILE", "/home/saif/.dashboard_internet_outages.json")
-YOUTUBE_POLICY_FILE = os.environ.get("YOUTUBE_POLICY_CONFIG", "/home/saif/.dashboard_youtube_policy.json")
+YOUTUBE_POLICY_FILE = os.environ.get("YOUTUBE_POLICY_CONFIG", "/etc/dashboard/youtube_policy.json")
 YOUTUBE_POLICY_BIN = "/usr/local/bin/youtube_policy.py"
 
 
@@ -4301,8 +4301,16 @@ def youtube_save_api():
            "days": [int(x) for x in payload.get("days", []) if str(x).isdigit() and 0 <= int(x) <= 6],
            "manual_enabled": bool(payload.get("manual_enabled"))}
     try:
-        with open(YOUTUBE_POLICY_FILE, "w") as f: json.dump(cfg, f)
-        os.chmod(YOUTUBE_POLICY_FILE, 0o640)
+        with tempfile.NamedTemporaryFile(mode="w", prefix="youtube-policy-", suffix=".json", delete=False) as temp:
+            json.dump(cfg, temp)
+            temp_path = temp.name
+        try:
+            install_result = subprocess.run(["sudo", "install", "-o", "root", "-g", "root", "-m", "0640", temp_path, YOUTUBE_POLICY_FILE], capture_output=True, text=True, timeout=10, check=False)
+        finally:
+            try: os.unlink(temp_path)
+            except OSError: pass
+        if install_result.returncode != 0:
+            return jsonify({"ok": False, "error": install_result.stderr[-500:] or "Cannot install policy file"}), 500
         result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "apply"], capture_output=True, text=True, timeout=40, check=False)
         state = json.loads(result.stdout.strip() or "{}")
         return jsonify({"ok": result.returncode == 0, "state": state, "error": result.stderr[-500:] if result.returncode else ""})

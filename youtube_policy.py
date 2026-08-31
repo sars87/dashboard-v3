@@ -2,7 +2,7 @@
 import argparse, datetime as dt, ipaddress, json, os, sqlite3, subprocess, sys, time
 
 GRAVITY = "/etc/pihole/gravity.db"
-CONFIG = os.environ.get("YOUTUBE_POLICY_CONFIG", "/home/saif/.dashboard_youtube_policy.json")
+CONFIG = os.environ.get("YOUTUBE_POLICY_CONFIG", "/etc/dashboard/youtube_policy.json")
 GROUP_NAME = "YouTube_Block"
 GROUP_DESC = "Dashboard YouTube blocking policy"
 DOMAINS = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "googlevideo.com", "youtubei.googleapis.com", "ytimg.com"]
