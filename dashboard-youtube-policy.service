@@ -1,0 +1,8 @@
+[Unit]
+Description=Dashboard YouTube blocking policy scheduler
+After=pihole-FTL.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/youtube_policy.py apply

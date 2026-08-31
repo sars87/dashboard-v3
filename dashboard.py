@@ -28,12 +28,14 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v10.5"
+VERSION = "v10.6"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
 DEFAULT_ELECTRICITY_BACKEND_URL = "http://127.0.0.1:3000"
 INTERNET_STATE_FILE = os.environ.get("DASHBOARD_INTERNET_STATE_FILE", "/home/saif/.dashboard_internet_outages.json")
+YOUTUBE_POLICY_FILE = os.environ.get("YOUTUBE_POLICY_CONFIG", "/home/saif/.dashboard_youtube_policy.json")
+YOUTUBE_POLICY_BIN = "/usr/local/bin/youtube_policy.py"
 
 
 def get_repo_url():
@@ -636,13 +638,43 @@ def clear_pihole_pause_state():
     except FileNotFoundError:
         pass
 
+def youtube_policy_state():
+    try:
+        result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "status"], capture_output=True, text=True, timeout=5, check=False)
+        data = json.loads(result.stdout.strip() or "{}")
+        return data if isinstance(data, dict) else {}
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return {}
+
+
 def youtube_status():
+    state = youtube_policy_state()
+    if state.get("effective_enabled") is True or state.get("group_enabled") is True:
+        return "Blocked"
+    if state:
+        return "Enabled"
     x = sh("sudo sqlite3 /etc/pihole/gravity.db \"select enabled from 'group' where name='YouTube_Block';\"").strip()
     if x == "0":
         return "Enabled"
     if x == "1":
         return "Blocked"
     return "Unknown"
+
+
+def youtube_lan_devices():
+    found = {}
+    raw = sh("ip neigh show 2>/dev/null")
+    for line in raw.splitlines():
+        match = re.match(r"^((?:\d{1,3}\.){3}\d{1,3})\\s+dev\\s+(\\S+)(?:\\s+lladdr\\s+(\\S+))?\\s+(\\S+)", line.strip())
+        if match and match.group(4) not in {"FAILED", "INCOMPLETE"}:
+            ip, iface, mac, state = match.groups()
+            found[ip] = {"ip": ip, "mac": mac or "", "iface": iface, "state": state}
+    return sorted(found.values(), key=lambda item: tuple(int(x) for x in item["ip"].split(".")))
+
+
+def youtube_target_groups():
+    return [g for g in pihole_groups() if str(g.get("name", "")) != "YouTube_Block"]
+
 
 def cpu():
     try:
@@ -2733,6 +2765,35 @@ HTML = '''
             </div>
         </section>
 
+        <!-- Granular YouTube Policy -->
+        <section class="section" id="youtube-policy-panel">
+            <div class="section-header"><div class="section-icon blue"><span style="font-size:20px;color:#ef4444;">▶</span></div><h2 class="section-title">YouTube Control — التحكم الدقيق</h2></div>
+            <div class="card" style="padding:18px;">
+                <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px;">
+                    <div><strong id="yt_policy_status">Loading policy…</strong><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Choose who is blocked, then optionally limit it to a daily time window.</div></div>
+                    <div style="display:flex;gap:6px;"><button class="btn-service on" type="button" onclick="youtubeToggle(true,this)">Block now</button><button class="btn-service off" type="button" onclick="youtubeToggle(false,this)">Allow now</button></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+                    <label style="color:var(--text-secondary);font-size:12px;">Target scope<select id="yt_mode" onchange="ytModeChanged()" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;border-radius:7px;"><option value="all">All devices — كل الأجهزة</option><option value="groups">Pi-hole groups — مجموعات</option><option value="ips">Specific IPs — أجهزة محددة</option></select></label>
+                    <label style="color:var(--text-secondary);font-size:12px;">Block from <input id="yt_start" type="time" value="16:00" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:7px;border-radius:7px;"></label>
+                    <label style="color:var(--text-secondary);font-size:12px;">Block until <input id="yt_end" type="time" value="22:00" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:7px;border-radius:7px;"></label>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);"><label><input type="checkbox" id="yt_schedule"> Enable schedule — تفعيل الجدول</label><span>Days:</span><label><input class="yt_day" type="checkbox" value="0" checked> Sun</label><label><input class="yt_day" type="checkbox" value="1" checked> Mon</label><label><input class="yt_day" type="checkbox" value="2" checked> Tue</label><label><input class="yt_day" type="checkbox" value="3" checked> Wed</label><label><input class="yt_day" type="checkbox" value="4" checked> Thu</label><label><input class="yt_day" type="checkbox" value="5" checked> Fri</label><label><input class="yt_day" type="checkbox" value="6" checked> Sat</label></div>
+                <div id="yt_groups_box" style="display:none;margin-top:12px;"><label style="font-size:12px;color:var(--text-secondary);">Select groups</label><div id="yt_groups" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:6px;"></div></div>
+                <div id="yt_ips_box" style="display:none;margin-top:12px;"><label style="font-size:12px;color:var(--text-secondary);">Select discovered LAN devices (real internal IPs)</label><div id="yt_ips" style="max-height:160px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;margin-top:6px;"></div></div>
+                <button type="button" class="btn-service" style="margin-top:14px;background:rgba(6,182,212,.15);color:#22d3ee;border:1px solid rgba(6,182,212,.35);" onclick="saveYoutubePolicy(this)">Save YouTube policy</button><span id="yt_policy_msg" style="font-size:12px;color:var(--text-muted);margin-left:8px;"></span>
+            </div>
+        </section>
+
+        <script>
+        let ytPolicy={};
+        async function loadYoutubePolicy(){try{const r=await fetch('/api/youtube-state');const j=await r.json();if(!j.ok)return;ytPolicy=j.state||{};document.getElementById('yt_policy_status').textContent=(ytPolicy.effective_enabled?'BLOCKED':'ALLOWED')+' · '+(ytPolicy.mode||'all')+(ytPolicy.schedule_enabled?' · scheduled':'');document.getElementById('yt_mode').value=ytPolicy.mode||'all';document.getElementById('yt_start').value=ytPolicy.start||'16:00';document.getElementById('yt_end').value=ytPolicy.end||'22:00';document.getElementById('yt_schedule').checked=!!ytPolicy.schedule_enabled;document.querySelectorAll('.yt_day').forEach(x=>x.checked=(ytPolicy.days||[0,1,2,3,4,5,6]).includes(Number(x.value)));document.getElementById('yt_groups').innerHTML=(ytPolicy.groups||[]).map(g=>`<label style="padding:7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;"><input class="yt_group" type="checkbox" value="${g.id}" ${(ytPolicy.groups_selected||[]).includes(Number(g.id))?'checked':''}> ${g.name}</label>`).join('');document.getElementById('yt_ips').innerHTML=(ytPolicy.devices||[]).map(d=>`<label style="padding:7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;"><input class="yt_ip" type="checkbox" value="${d.ip}" ${(ytPolicy.ips||[]).includes(d.ip)?'checked':''}> ${d.ip} <small>${d.mac||d.iface}</small></label>`).join('');ytModeChanged()}catch(e){}}
+        function ytModeChanged(){const m=document.getElementById('yt_mode').value;document.getElementById('yt_groups_box').style.display=m==='groups'?'block':'none';document.getElementById('yt_ips_box').style.display=m==='ips'?'block':'none'}
+        async function saveYoutubePolicy(btn){btn.disabled=true;document.getElementById('yt_policy_msg').textContent='Saving…';const p={mode:document.getElementById('yt_mode').value,start:document.getElementById('yt_start').value,end:document.getElementById('yt_end').value,schedule_enabled:document.getElementById('yt_schedule').checked,days:[...document.querySelectorAll('.yt_day:checked')].map(x=>Number(x.value)),groups:[...document.querySelectorAll('.yt_group:checked')].map(x=>Number(x.value)),ips:[...document.querySelectorAll('.yt_ip:checked')].map(x=>x.value),manual_enabled:true};try{const r=await fetch('/api/youtube-save',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(p)});const j=await r.json();document.getElementById('yt_policy_msg').textContent=j.ok?'Saved and applied':'Error: '+(j.error||'apply failed');if(j.ok)loadYoutubePolicy()}catch(e){document.getElementById('yt_policy_msg').textContent='Network error'}btn.disabled=false}
+        async function youtubeToggle(enabled,btn){btn.disabled=true;try{await fetch('/api/youtube-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});loadYoutubePolicy()}finally{btn.disabled=false}}
+        loadYoutubePolicy();
+        </script>
+
         <!-- Recent Speed Tests -->
         <section class="section">
             <div class="section-header">
@@ -4202,6 +4263,56 @@ def quick_status_api():
     })
 
 
+@app.route("/api/youtube-state")
+def youtube_state_api():
+    if not logged(): return jsonify({"ok": False, "error": "Not logged in"}), 401
+    state = youtube_policy_state()
+    state["groups_selected"] = list(state.get("groups", []))
+    state["devices"] = youtube_lan_devices()
+    state["groups"] = youtube_target_groups()
+    return jsonify({"ok": True, "state": state})
+
+
+@app.route("/api/youtube-save", methods=["POST"])
+def youtube_save_api():
+    if not logged(): return jsonify({"ok": False, "error": "Not logged in"}), 401
+    payload = request.get_json(silent=True) or {}
+    mode = payload.get("mode", "all")
+    if mode not in {"all", "groups", "ips"}: return jsonify({"ok": False, "error": "Invalid mode"}), 400
+    start, end = str(payload.get("start", "00:00")), str(payload.get("end", "00:00"))
+    time_re = re.compile(r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+    if not time_re.fullmatch(start) or not time_re.fullmatch(end): return jsonify({"ok": False, "error": "Time must be HH:MM"}), 400
+    ips = []
+    for value in payload.get("ips", []):
+        try:
+            import ipaddress
+            ipaddress.ip_address(str(value)); ips.append(str(value))
+        except ValueError: pass
+    cfg = {"mode": mode, "groups": [int(x) for x in payload.get("groups", []) if str(x).isdigit()], "ips": ips,
+           "schedule_enabled": bool(payload.get("schedule_enabled")), "start": start, "end": end,
+           "days": [int(x) for x in payload.get("days", []) if str(x).isdigit() and 0 <= int(x) <= 6],
+           "manual_enabled": bool(payload.get("manual_enabled"))}
+    try:
+        with open(YOUTUBE_POLICY_FILE, "w") as f: json.dump(cfg, f)
+        os.chmod(YOUTUBE_POLICY_FILE, 0o640)
+        result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "apply"], capture_output=True, text=True, timeout=40, check=False)
+        state = json.loads(result.stdout.strip() or "{}")
+        return jsonify({"ok": result.returncode == 0, "state": state, "error": result.stderr[-500:] if result.returncode else ""})
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/youtube-toggle", methods=["POST"])
+def youtube_toggle_api():
+    if not logged(): return jsonify({"ok": False, "error": "Not logged in"}), 401
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "apply", "--force", "on" if payload.get("enabled") else "off"], capture_output=True, text=True, timeout=40, check=False)
+        return jsonify({"ok": result.returncode == 0, "state": json.loads(result.stdout.strip() or "{}"), "error": result.stderr[-500:]})
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/api/trpc/<path:trpc_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def electricity_trpc_proxy(trpc_path):
     """Proxy local e-app tRPC calls to the backend when clients use the dashboard origin."""
@@ -4694,8 +4805,8 @@ def action(name):
         return redirect("/dashboard")
 
     action_sequences = {
-        "youtube_on": [["sudo", "bash", "/usr/local/bin/youtube_on.sh"]],
-        "youtube_off": [["sudo", "bash", "/usr/local/bin/youtube_off.sh"]],
+        "youtube_on": [["sudo", "python3", YOUTUBE_POLICY_BIN, "apply", "--force", "on"]],
+        "youtube_off": [["sudo", "python3", YOUTUBE_POLICY_BIN, "apply", "--force", "off"]],
         "pihole_on": [["sudo", "pihole", "enable"]],
         "pihole_off": [["sudo", "pihole", "disable"]],
         "vpn_on": [["sudo", "systemctl", "start", "openvpn-client@proton"]],

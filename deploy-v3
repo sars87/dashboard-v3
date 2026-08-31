@@ -58,7 +58,7 @@ if [ ! -f "$TARGET_DIR/dashboard.py" ]; then
 fi
 
 echo "==> [3/6] Verifying Python syntax..."
-python3 -B -c "import pathlib; [compile(pathlib.Path(p).read_text(), p, 'exec') for p in ('$TARGET_DIR/dashboard.py', '$TARGET_DIR/internet_monitor.py')]"
+python3 -B -c "import pathlib; [compile(pathlib.Path(p).read_text(), p, 'exec') for p in ('$TARGET_DIR/dashboard.py', '$TARGET_DIR/internet_monitor.py', '$TARGET_DIR/youtube_policy.py')]"
 
  echo "==> [4/6] Installing dashboard.py..."
 cp "$TARGET_DIR/dashboard.py" "$USER_HOME/dashboard.py"
@@ -150,8 +150,22 @@ sed -e "s/^User=saif$/User=$TARGET_USER/" \
     "$TARGET_DIR/dashboard-internet-monitor.service" > /etc/systemd/system/dashboard-internet-monitor.service
 chmod 644 /etc/systemd/system/dashboard-internet-monitor.service
 
+# Install and initialize granular YouTube policy and its minute scheduler.
+if [ ! -f "$TARGET_DIR/youtube_policy.py" ] || [ ! -f "$TARGET_DIR/dashboard-youtube-policy.service" ] || [ ! -f "$TARGET_DIR/dashboard-youtube-policy.timer" ]; then
+    echo "Error: YouTube policy files are missing from the pulled repository. Deployment stopped."
+    exit 1
+fi
+install -m 0755 "$TARGET_DIR/youtube_policy.py" /usr/local/bin/youtube_policy.py
+sed -e "s#^ExecStart=.*#ExecStart=/usr/bin/python3 /usr/local/bin/youtube_policy.py apply#" "$TARGET_DIR/dashboard-youtube-policy.service" > /etc/systemd/system/dashboard-youtube-policy.service
+install -m 0644 "$TARGET_DIR/dashboard-youtube-policy.timer" /etc/systemd/system/dashboard-youtube-policy.timer
+if [ ! -f "$USER_HOME/.dashboard_youtube_policy.json" ]; then
+    printf '%s\n' '{"mode":"all","groups":[],"ips":[],"schedule_enabled":false,"start":"16:00","end":"22:00","days":[0,1,2,3,4,5,6],"manual_enabled":false}' > "$USER_HOME/.dashboard_youtube_policy.json"
+    chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/.dashboard_youtube_policy.json"
+    chmod 0640 "$USER_HOME/.dashboard_youtube_policy.json"
+fi
 systemctl daemon-reload
-systemctl enable --now dashboard-internet-monitor.service
+systemctl enable --now dashboard-internet-monitor.service dashboard-youtube-policy.timer
+python3 /usr/local/bin/youtube_policy.py init || true
 
  echo "==> [6/6] Restarting dashboard service..."
 if systemctl restart dashboard.service; then
@@ -164,6 +178,6 @@ fi
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
 
 echo "=========================================================="
-echo "v10.4 Deployed Successfully for $TARGET_USER"
+echo "v10.6 Deployed Successfully for $TARGET_USER"
 echo "Electricity analytics: http://127.0.0.1:8088/electricity"
 echo "=========================================================="
