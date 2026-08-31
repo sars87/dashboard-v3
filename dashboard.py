@@ -4279,9 +4279,17 @@ def youtube_save_api():
     payload = request.get_json(silent=True) or {}
     mode = payload.get("mode", "all")
     if mode not in {"all", "groups", "ips"}: return jsonify({"ok": False, "error": "Invalid mode"}), 400
-    start, end = str(payload.get("start", "00:00")), str(payload.get("end", "00:00"))
-    time_re = re.compile(r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
-    if not time_re.fullmatch(start) or not time_re.fullmatch(end): return jsonify({"ok": False, "error": "Time must be HH:MM"}), 400
+    def normalize_hhmm(value):
+        try:
+            parts = str(value).strip().split(":")
+            if len(parts) != 2: return None
+            hour, minute = int(parts[0]), int(parts[1])
+            if not (0 <= hour <= 23 and 0 <= minute <= 59): return None
+            return f"{hour:02d}:{minute:02d}"
+        except (TypeError, ValueError):
+            return None
+    start, end = normalize_hhmm(payload.get("start", "00:00")), normalize_hhmm(payload.get("end", "00:00"))
+    if start is None or end is None: return jsonify({"ok": False, "error": "Time must be HH:MM, for example 16:00"}), 400
     ips = []
     for value in payload.get("ips", []):
         try:
