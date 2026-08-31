@@ -28,7 +28,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v10.6"
+VERSION = "v10.7"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"

@@ -37,7 +37,8 @@ def db():
 
 
 def table_columns(con, table):
-    return {r[1] for r in con.execute("PRAGMA table_info(%s)" % table)}
+    safe_table = str(table).replace("'", "''")
+    return {r[1] for r in con.execute("PRAGMA table_info('%s')" % safe_table)}
 
 
 def ensure_policy(con):
