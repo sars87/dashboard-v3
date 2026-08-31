@@ -42,7 +42,13 @@ get_env_value() {
 }
 
 echo "==> [1/6] Preparing deployment directory for $TARGET_USER at $TARGET_DIR..."
-sudo -u "$TARGET_USER" mkdir -p "$TARGET_DIR"
+# deploy-v3 itself is normally launched with sudo. Previous runs could therefore
+# leave .git/objects owned by root, causing git pull as saif to fail.
+mkdir -p "$USER_HOME/deployments" "$TARGET_DIR"
+chown "$TARGET_USER:$TARGET_USER" "$USER_HOME/deployments" "$TARGET_DIR"
+if [ -d "$TARGET_DIR/.git" ]; then
+    chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_DIR"
+fi
 
 if [ -d "$TARGET_DIR/.git" ]; then
     echo "==> [2/6] Pulling latest changes from GitHub as $TARGET_USER..."
