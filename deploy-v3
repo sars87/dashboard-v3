@@ -181,6 +181,13 @@ systemctl daemon-reload
 systemctl enable --now dashboard-internet-monitor.service dashboard-youtube-policy.timer
 python3 /usr/local/bin/youtube_policy.py init || true
 
+# Jellyfin remains available from the dashboard, but must not start by itself
+# after a system boot or reboot. Starting it manually does not re-enable boot.
+if systemctl list-unit-files jellyfin.service --no-legend 2>/dev/null | grep -q '^jellyfin.service'; then
+    echo "==> Configuring Jellyfin to stay off after system boot..."
+    systemctl disable jellyfin.service
+fi
+
  echo "==> [6/6] Restarting dashboard service..."
 if systemctl restart dashboard.service; then
     systemctl is-active --quiet dashboard.service
