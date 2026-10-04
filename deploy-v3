@@ -97,51 +97,11 @@ if ! grep -q '^PIHOLE_PASSWORD=' "$ENV_FILE"; then
     set_env_value PIHOLE_PASSWORD ""
 fi
 
-# Electricity analytics defaults match e-app's sync contract.
-if [ -z "$(get_env_value ELECTRICITY_BACKEND_URL)" ]; then
-    set_env_value ELECTRICITY_BACKEND_URL "http://127.0.0.1:3000"
-fi
-if [ -z "$(get_env_value ELECTRICITY_WORKSPACE_KEY)" ]; then
-    set_env_value ELECTRICITY_WORKSPACE_KEY "home"
-fi
-if ! grep -q '^ELECTRICITY_STATE_FILE=' "$ENV_FILE"; then
-    set_env_value ELECTRICITY_STATE_FILE ""
-fi
-set_env_value ALLOW_LOCAL_ELECTRICITY_LATEST "1"
 if ! grep -q '^DASHBOARD_INTERNET_STATE_FILE=' "$ENV_FILE"; then
     set_env_value DASHBOARD_INTERNET_STATE_FILE "$USER_HOME/.dashboard_internet_outages.json"
 fi
 if ! grep -q '^DASHBOARD_INTERNET_CHECK_INTERVAL=' "$ENV_FILE"; then
     set_env_value DASHBOARD_INTERNET_CHECK_INTERVAL "10"
-fi
-
-# Refresh the companion e-app backend when it is deployed on this server.
-EAPP_DIR="${E_APP_DIR:-}"
-if [ -z "$EAPP_DIR" ]; then
-    for candidate in "$USER_HOME/e-app" "$USER_HOME/deployments/e-app" "$USER_HOME/ihtisab-istiلاك-kahrabaa"; do
-        if [ -d "$candidate/.git" ]; then EAPP_DIR="$candidate"; break; fi
-    done
-fi
-if [ -n "$EAPP_DIR" ] && [ -d "$EAPP_DIR/.git" ]; then
-    echo "==> Updating local e-app backend for automatic electricity access..."
-    sudo -u "$TARGET_USER" bash -c "cd '$EAPP_DIR' && git reset --hard HEAD && git pull --ff-only origin main"
-    if command -v pnpm >/dev/null 2>&1; then
-        sudo -u "$TARGET_USER" bash -c "cd '$EAPP_DIR' && pnpm install --frozen-lockfile && pnpm build"
-    fi
-    for svc in electricity-server.service e-app.service eapp.service electricity-backend.service; do
-        if systemctl list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "$svc"; then
-            systemctl restart "$svc"
-            break
-        fi
-    done
-else
-    echo "==> e-app backend directory not found; dashboard will use existing backend or local JSON."
-fi
-
-# Zero-input deployment: local e-app access works without a Sync Key. Keep any
-# existing key, otherwise leave it empty and use the local latest endpoint.
-if ! grep -q '^ELECTRICITY_SYNC_KEY=' "$ENV_FILE"; then
-    set_env_value ELECTRICITY_SYNC_KEY ""
 fi
 
 if [ -f "$SERVICE_FILE" ] && ! grep -q '^EnvironmentFile=/etc/dashboard/dashboard.env' "$SERVICE_FILE"; then

@@ -28,7 +28,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v10.7"
+VERSION = "v10.8"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
@@ -413,31 +413,6 @@ def lan_arp_scan():
     if not out:
         out = sh("cat /proc/net/arp 2>/dev/null")
     return out if out else "ARP table unavailable."
-QUICK_LINKS_FILE = "/tmp/dashboard_quick_links.json"
-
-def get_quick_links():
-    default_links = [
-        {"id": "1", "name": "Pi-hole Admin", "url": "http://192.168.100.3/admin", "icon": "shield"},
-        {"id": "2", "name": "Jellyfin Media", "url": "http://192.168.100.3:8096", "icon": "play"},
-        {"id": "3", "name": "Router Gateway", "url": "http://192.168.100.1", "icon": "wifi"},
-        {"id": "4", "name": "GitHub Repo", "url": "https://github.com/sars87/dashboard-v2", "icon": "git"}
-    ]
-    try:
-        if os.path.exists(QUICK_LINKS_FILE):
-            with open(QUICK_LINKS_FILE, "r") as f:
-                data = json.load(f)
-                if data:
-                    return data
-    except:
-        pass
-    return default_links
-
-def save_quick_links(links):
-    try:
-        with open(QUICK_LINKS_FILE, "w") as f:
-            json.dump(links, f)
-    except:
-        pass
 PIHOLE_PAUSE_STATE = "/tmp/pihole_pause_timer.json"
 
 # ==================================================
@@ -1229,7 +1204,7 @@ def _format_outage_duration(total_seconds):
     return f"{days} يوم، {hours} ساعة، {minutes} دقيقة، {seconds} ثانية"
 
 
-def internet_outage_rows(limit=20):
+def internet_outage_rows(limit=5):
     """Read outage history written by internet_monitor.py without blocking on WAN."""
     try:
         with open(INTERNET_STATE_FILE, "r", encoding="utf-8") as handle:
@@ -1268,7 +1243,7 @@ def internet_outage_rows(limit=20):
             "duration": _format_outage_duration(duration),
             "ongoing": True,
         })
-    return rows[:max(1, min(int(limit), 200))]
+    return rows[:max(1, min(int(limit), 5))]
 
 
 # ==================================================
@@ -2311,7 +2286,6 @@ HTML = '''
         <!-- Standalone dashboard tabs -->
         <nav class="tabs-nav" aria-label="Dashboard sections">
             <a class="tab-btn active" href="/dashboard">⌂ Home</a>
-            <a class="tab-btn" href="/electricity">⚡ Electricity Analytics</a>
         </nav>
 
         <!-- Live Bandwidth -->
@@ -2391,8 +2365,8 @@ HTML = '''
                 </div>
             </div>
 
-            <!-- Inline Date Traffic Report & Filter -->
-            <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:14px;">
+            <!-- Legacy traffic report removed from the dashboard. -->
+            <div style="display:none" aria-hidden="true">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                     <h3 style="margin:0; font-size:13px; color:var(--text);">📅 Date Traffic Consumption Report (تقرير الاستهلاك حسب التاريخ)</h3>
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:11px;">
@@ -2765,35 +2739,6 @@ HTML = '''
             </div>
         </section>
 
-        <!-- Granular YouTube Policy -->
-        <section class="section" id="youtube-policy-panel">
-            <div class="section-header"><div class="section-icon blue"><span style="font-size:20px;color:#ef4444;">▶</span></div><h2 class="section-title">YouTube Control — التحكم الدقيق</h2></div>
-            <div class="card" style="padding:18px;">
-                <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px;">
-                    <div><strong id="yt_policy_status">Loading policy…</strong><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Choose who is blocked, then optionally limit it to a daily time window.</div></div>
-                    <div style="display:flex;gap:6px;"><button class="btn-service on" type="button" onclick="youtubeToggle(true,this)">Block now</button><button class="btn-service off" type="button" onclick="youtubeToggle(false,this)">Allow now</button></div>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
-                    <label style="color:var(--text-secondary);font-size:12px;">Target scope<select id="yt_mode" onchange="ytModeChanged()" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;border-radius:7px;"><option value="all">All devices — كل الأجهزة</option><option value="groups">Pi-hole groups — مجموعات</option><option value="ips">Specific IPs — أجهزة محددة</option></select></label>
-                    <label style="color:var(--text-secondary);font-size:12px;">Block from <input id="yt_start" type="time" value="16:00" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:7px;border-radius:7px;"></label>
-                    <label style="color:var(--text-secondary);font-size:12px;">Block until <input id="yt_end" type="time" value="22:00" style="display:block;width:100%;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:7px;border-radius:7px;"></label>
-                </div>
-                <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);"><label><input type="checkbox" id="yt_schedule"> Enable schedule — تفعيل الجدول</label><span>Days:</span><label><input class="yt_day" type="checkbox" value="0" checked> Sun</label><label><input class="yt_day" type="checkbox" value="1" checked> Mon</label><label><input class="yt_day" type="checkbox" value="2" checked> Tue</label><label><input class="yt_day" type="checkbox" value="3" checked> Wed</label><label><input class="yt_day" type="checkbox" value="4" checked> Thu</label><label><input class="yt_day" type="checkbox" value="5" checked> Fri</label><label><input class="yt_day" type="checkbox" value="6" checked> Sat</label></div>
-                <div id="yt_groups_box" style="display:none;margin-top:12px;"><label style="font-size:12px;color:var(--text-secondary);">Select groups</label><div id="yt_groups" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:6px;"></div></div>
-                <div id="yt_ips_box" style="display:none;margin-top:12px;"><label style="font-size:12px;color:var(--text-secondary);">Select discovered LAN devices (real internal IPs)</label><div id="yt_ips" style="max-height:160px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;margin-top:6px;"></div></div>
-                <button type="button" class="btn-service" style="margin-top:14px;background:rgba(6,182,212,.15);color:#22d3ee;border:1px solid rgba(6,182,212,.35);" onclick="saveYoutubePolicy(this)">Save YouTube policy</button><span id="yt_policy_msg" style="font-size:12px;color:var(--text-muted);margin-left:8px;"></span>
-            </div>
-        </section>
-
-        <script>
-        let ytPolicy={};
-        async function loadYoutubePolicy(){try{const r=await fetch('/api/youtube-state');const j=await r.json();if(!j.ok)return;ytPolicy=j.state||{};document.getElementById('yt_policy_status').textContent=(ytPolicy.effective_enabled?'BLOCKED':'ALLOWED')+' · '+(ytPolicy.mode||'all')+(ytPolicy.schedule_enabled?' · scheduled':'');document.getElementById('yt_mode').value=ytPolicy.mode||'all';document.getElementById('yt_start').value=ytPolicy.start||'16:00';document.getElementById('yt_end').value=ytPolicy.end||'22:00';document.getElementById('yt_schedule').checked=!!ytPolicy.schedule_enabled;document.querySelectorAll('.yt_day').forEach(x=>x.checked=(ytPolicy.days||[0,1,2,3,4,5,6]).includes(Number(x.value)));document.getElementById('yt_groups').innerHTML=(ytPolicy.groups||[]).map(g=>`<label style="padding:7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;"><input class="yt_group" type="checkbox" value="${g.id}" ${(ytPolicy.groups_selected||[]).includes(Number(g.id))?'checked':''}> ${g.name}</label>`).join('');document.getElementById('yt_ips').innerHTML=(ytPolicy.devices||[]).map(d=>`<label style="padding:7px;background:var(--bg);border:1px solid var(--border);border-radius:6px;"><input class="yt_ip" type="checkbox" value="${d.ip}" ${(ytPolicy.ips||[]).includes(d.ip)?'checked':''}> ${d.ip} <small>${d.mac||d.iface}</small></label>`).join('');ytModeChanged()}catch(e){}}
-        function ytModeChanged(){const m=document.getElementById('yt_mode').value;document.getElementById('yt_groups_box').style.display=m==='groups'?'block':'none';document.getElementById('yt_ips_box').style.display=m==='ips'?'block':'none'}
-        async function saveYoutubePolicy(btn){btn.disabled=true;document.getElementById('yt_policy_msg').textContent='Saving…';const p={mode:document.getElementById('yt_mode').value,start:document.getElementById('yt_start').value,end:document.getElementById('yt_end').value,schedule_enabled:document.getElementById('yt_schedule').checked,days:[...document.querySelectorAll('.yt_day:checked')].map(x=>Number(x.value)),groups:[...document.querySelectorAll('.yt_group:checked')].map(x=>Number(x.value)),ips:[...document.querySelectorAll('.yt_ip:checked')].map(x=>x.value),manual_enabled:true};try{const r=await fetch('/api/youtube-save',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(p)});const j=await r.json();document.getElementById('yt_policy_msg').textContent=j.ok?'Saved and applied':'Error: '+(j.error||'apply failed');if(j.ok)loadYoutubePolicy()}catch(e){document.getElementById('yt_policy_msg').textContent='Network error'}btn.disabled=false}
-        async function youtubeToggle(enabled,btn){btn.disabled=true;try{await fetch('/api/youtube-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});loadYoutubePolicy()}finally{btn.disabled=false}}
-        loadYoutubePolicy();
-        </script>
-
         <!-- Recent Speed Tests -->
         <section class="section">
             <div class="section-header">
@@ -3010,61 +2955,6 @@ HTML = '''
         </section>
 
 
-
-        <!-- Quick Links Launcher Section -->
-        <section class="section">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon blue">
-                        <svg viewBox="0 0 24 24" fill="#3b82f6">
-                            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
-                        </svg>
-                    </div>
-                    <h2 class="section-title" style="margin:0;">Custom Quick Links & Services Launcher</h2>
-                </div>
-                <button type="button" onclick="document.getElementById('quickLinkModal').style.display='flex'" class="query-action" style="padding:6px 14px; font-size:12px; background:var(--primary); color:white; border-color:var(--primary); cursor:pointer;">
-                    + Add Quick Link
-                </button>
-            </div>
-
-            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px; margin-top:16px;">
-                {% for l in quick_links %}
-                <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; transition:all 0.2s ease; position:relative;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <span style="font-weight:700; color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">{{l.name}}</span>
-                            <a href="/action/quick_link/delete/{{l.id}}" onclick="saveScroll()" title="Delete Link" style="color:var(--danger); font-size:12px; text-decoration:none; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">✕</a>
-                        </div>
-                        <div style="font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:12px;" title="{{l.url}}">{{l.url}}</div>
-                    </div>
-                    <a href="{{l.url}}" target="_blank" onclick="saveScroll()" style="display:inline-block; text-align:center; background:var(--primary); color:white; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">
-                        Launch Service ↗
-                    </a>
-                </div>
-                {% endfor %}
-            </div>
-        </section>
-
-        <!-- Add Quick Link Modal -->
-        <div id="quickLinkModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
-            <div style="background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:24px; width:90%; max-width:400px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
-                <h3 style="margin-top:0; margin-bottom:12px; color:var(--text);">Add Quick Link (إضافة رابط سريع)</h3>
-                <form method="POST" action="/action/quick_link/add" onsubmit="saveScroll()">
-                    <div style="margin-bottom:12px;">
-                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Service Name (اسم الخدمة):</label>
-                        <input type="text" name="name" placeholder="e.g. Pi-hole, Plex, Router" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
-                    </div>
-                    <div style="margin-bottom:16px;">
-                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Service URL (رابط الموقع):</label>
-                        <input type="url" name="url" placeholder="http://192.168.1.100:8080" required style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); border:1px solid var(--border); color:var(--text); font-size:13px;">
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; gap:8px;">
-                        <button type="button" onclick="document.getElementById('quickLinkModal').style.display='none'" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:8px 16px; border-radius:8px; cursor:pointer;">Cancel</button>
-                        <button type="submit" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Add Link</button>
-                    </div>
-                </form>
-            </div>
-        </div>
 
         <!-- Cron Jobs Section -->
         <section class="section">
@@ -4209,7 +4099,7 @@ def dashboard():
         cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
         reboot=values["reboot"], upd=values["upd"], groups=values["groups"], spd=values["spd"],
         spdhist=values["spdhist"], bat=values["bat"], docker=values["docker"],
-        cronjobs=values["cronjobs"], quick_links=get_quick_links(), secure_notes=get_secure_notes(),
+        cronjobs=values["cronjobs"], secure_notes=get_secure_notes(),
         fw_status=values["fw_status"], ssh_failures=values["ssh_failures"],
         arp_devices=values["arp_devices"], net_conns=values["net_conns"], top_procs=values["top_procs"],
         kernel_info=values["kernel_info"], open_ports=values["open_ports"],
@@ -4370,29 +4260,6 @@ def electricity_health_proxy():
         return jsonify({"ok": False, "error": str(exc)}), 502
 
 
-@app.route("/electricity")
-def electricity():
-    if not logged():
-        return redirect("/")
-    period = request.args.get("period", "day")
-    return render_template_string(ELECTRICITY_HTML, version=VERSION, data=electricity_analytics(period))
-
-
-@app.route("/electricity/data")
-def electricity_data():
-    if not logged():
-        return jsonify({"ok": False, "error": "Not logged in"}), 401
-    return jsonify(electricity_analytics(request.args.get("period", "day")))
-
-
-@app.route("/electricity/config", methods=["POST"])
-def electricity_config():
-    if not logged():
-        return redirect("/")
-    save_electricity_config(request.form)
-    return redirect("/electricity")
-
-
 ELECTRICITY_HTML = '''
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -4514,28 +4381,6 @@ def groups():
     if not logged():
         return redirect("/")
     return render_template_string(GROUPS_HTML, groups=pihole_groups())
-
-@app.route("/action/quick_link/add", methods=["POST"])
-def add_quick_link():
-    if not logged():
-        return redirect("/")
-    name = request.form.get("name", "").strip()
-    url = request.form.get("url", "").strip()
-    if name and url:
-        links = get_quick_links()
-        new_id = str(int(time.time()))
-        links.append({"id": new_id, "name": name, "url": url, "icon": "link"})
-        save_quick_links(links)
-    return redirect("/dashboard")
-
-@app.route("/action/quick_link/delete/<lid>")
-def delete_quick_link(lid):
-    if not logged():
-        return redirect("/")
-    links = get_quick_links()
-    links = [l for l in links if l["id"] != lid]
-    save_quick_links(links)
-    return redirect("/dashboard")
 
 @app.route("/action/notes/add", methods=["POST"])
 def add_note():
