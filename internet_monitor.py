@@ -17,7 +17,14 @@ STATE_FILE = os.environ.get(
 )
 CHECK_INTERVAL = max(5, int(os.environ.get("DASHBOARD_INTERNET_CHECK_INTERVAL", "15")))
 MAX_HISTORY = 200
-PROBES = (("1.1.1.1", 53), ("8.8.8.8", 53))
+# HTTPS on independent providers. TCP/53 to public resolvers is dropped
+# intermittently by the upstream network even while browsing works, which
+# produced a stream of fake 10-25 s "outages".
+PROBES = (("1.1.1.1", 443), ("8.8.8.8", 443), ("9.9.9.9", 443), ("208.67.222.222", 443))
+# Only record an outage once every probe has kept failing for this long;
+# while suspicious, re-check quickly instead of waiting a full interval.
+CONFIRM_SECONDS = 20
+SUSPECT_INTERVAL = 3
 
 
 def now_ts():
@@ -57,22 +64,22 @@ def save_state(state):
 
 
 def probe_internet():
-    """Return True when at least one independent DNS endpoint is reachable."""
+    """Return True when at least one independent HTTPS endpoint is reachable."""
     for host, port in PROBES:
         try:
-            with socket.create_connection((host, port), timeout=1.5):
+            with socket.create_connection((host, port), timeout=2.5):
                 return True
         except OSError:
             continue
     return False
 
 
-def begin_outage(state, ts):
+def begin_outage(state, started):
     current = state.get("current")
     if not isinstance(current, dict) or not current.get("started_ts"):
         state["current"] = {
-            "started_ts": ts,
-            "started_at": local_text(ts),
+            "started_ts": started,
+            "started_at": local_text(started),
         }
         save_state(state)
 
@@ -99,26 +106,29 @@ def finish_outage(state, ts):
 
 def main():
     state = load_state()
-    previous = None
+    first_failure = None
     while True:
         online = probe_internet()
         ts = now_ts()
-        state["online"] = online
         state["checked_at"] = ts
         if online:
-            if previous is False:
-                finish_outage(state, ts)
-            elif isinstance(state.get("current"), dict):
-                # A previous monitor process may have exited while the link was
-                # already restored; close that stale interval on the first good probe.
+            first_failure = None
+            # Also closes an interval left open by a previous monitor process.
+            if isinstance(state.get("current"), dict):
                 finish_outage(state, ts)
         else:
-            begin_outage(state, ts)
+            if first_failure is None:
+                first_failure = ts
+            if ts - first_failure >= CONFIRM_SECONDS:
+                begin_outage(state, first_failure)
+        # Unconfirmed failures still report online, so a single dropped probe
+        # never flips the dashboard to offline.
+        confirmed_outage = isinstance(state.get("current"), dict)
+        state["online"] = online or not confirmed_outage
         # Persist the latest probe even while the connection remains stable, so
         # dashboard page loads can answer instantly from local disk.
         save_state(state)
-        previous = online
-        time.sleep(CHECK_INTERVAL)
+        time.sleep(SUSPECT_INTERVAL if first_failure is not None else CHECK_INTERVAL)
 
 
 if __name__ == "__main__":

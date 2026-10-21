@@ -581,7 +581,7 @@ def internet():
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         pass
     try:
-        with socket.create_connection(("1.1.1.1", 53), 0.5):
+        with socket.create_connection(("1.1.1.1", 443), 1.5):
             return True
     except OSError:
         return False
