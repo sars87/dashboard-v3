@@ -1334,30 +1334,52 @@ HTML = '''
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url("https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap");
+
+        /* Neubrutal theme: flat lilac paper, white slabs with thick ink borders
+           and hard offset shadows, saturated pastel fills that carry state.
+           Semantic text colors are darkened so they stay readable on white. */
         :root {
-            --bg-primary: #060a13;
-            --bg-secondary: #0f1826;
-            --bg-card: rgba(18, 27, 45, 0.60);
-            --bg-glass: rgba(255, 255, 255, 0.035);
-            --primary: #4f8cff;
-            --primary-light: #7fb0ff;
-            --primary-glow: rgba(79, 140, 255, 0.40);
-            --success: #10b981;
-            --success-glow: rgba(16, 185, 129, 0.3);
-            --danger: #ef4444;
-            --danger-glow: rgba(239, 68, 68, 0.3);
-            --warning: #f59e0b;
-            --warning-glow: rgba(245, 158, 11, 0.3);
-            --purple: #8b5cf6;
-            --cyan: #22d3ee;
-            --text: #f8fafc;
-            --text-secondary: #a5b0c2;
-            --text-muted: #6b7688;
-            --border: rgba(255, 255, 255, 0.07);
-            --border-light: rgba(255, 255, 255, 0.16);
-            --shadow: 0 24px 50px -12px rgba(0, 0, 0, 0.6);
-            --radius: 22px;
-            --radius-sm: 16px;
+            --nb-ink: #111111;
+            --nb-paper: #ece6ff;
+            --nb-card: #ffffff;
+            --nb-yellow: #ffd43b;
+            --nb-pink: #ff8cc6;
+            --nb-mint: #5be3a6;
+            --nb-orange: #ff9a4d;
+            --nb-blue: #a3b8ff;
+            --nb-coral: #ff8f8f;
+            --nb-sky: #8fe3ff;
+            --nb-violet: #c9b5ff;
+            --nb-font-display: "Archivo Black", "IBM Plex Sans Arabic", "Archivo", system-ui, sans-serif;
+            --nb-font-body: "Archivo", "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif;
+            --nb-font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+            --bg-primary: var(--nb-paper);
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --bg-glass: #ffffff;
+            --bg: #ffffff;
+            --primary: #3651ff;
+            --primary-light: #2b44d4;
+            --primary-glow: rgba(54, 81, 255, 0.25);
+            --success: #0b8550;
+            --success-glow: transparent;
+            --danger: #d3203a;
+            --danger-glow: transparent;
+            --warning: #a35f00;
+            --warning-glow: transparent;
+            --purple: #7a3cff;
+            --cyan: #0a7ea4;
+            --text: #111111;
+            --text-secondary: #33304a;
+            --text-muted: #5c5776;
+            --border: #111111;
+            --border-light: #111111;
+            --shadow: 5px 5px 0 #111111;
+            --radius: 18px;
+            --radius-sm: 14px;
+            color-scheme: light;
         }
 
         * {
@@ -2318,6 +2340,352 @@ HTML = '''
             from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* ===================== Neubrutal theme layer =====================
+           Restyles existing classes only; markup and behaviour are untouched.
+           !important is used solely to beat inline styles left over from the
+           old dark theme. */
+        body {
+            font-family: var(--nb-font-body);
+            background-color: var(--nb-paper);
+            background-image: radial-gradient(rgba(17, 17, 17, 0.13) 1px, transparent 1.2px);
+            background-size: 22px 22px;
+            color: var(--nb-ink);
+        }
+        body::before { display: none; }
+
+        h1, h2, h3, .section-title, .header-info h1, .toplist-title, .speed-value, .health-value {
+            font-family: var(--nb-font-display);
+            font-weight: 400;
+            letter-spacing: -0.01em;
+        }
+
+        /* --- slabs --- */
+        header, .service-card, .health-card, .games-card, .card, .speed-panel {
+            background: var(--nb-card);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border: 3px solid var(--nb-ink);
+            border-radius: var(--radius-sm);
+            box-shadow: 5px 5px 0 var(--nb-ink);
+        }
+        .service-card, .health-card {
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .service-card:hover, .health-card:hover {
+            transform: translate(-2px, -2px);
+            border-color: var(--nb-ink);
+            box-shadow: 7px 7px 0 var(--nb-ink);
+        }
+        .service-card::before, .health-card::after, header::before { display: none; }
+
+        header {
+            background: var(--nb-yellow);
+            border-radius: var(--radius);
+            box-shadow: 7px 7px 0 var(--nb-ink);
+        }
+        .header-info h1 {
+            font-size: 30px;
+            text-transform: uppercase;
+            background: none;
+            -webkit-background-clip: border-box;
+            background-clip: border-box;
+            -webkit-text-fill-color: currentColor;
+            color: var(--nb-ink);
+        }
+        .logo-icon {
+            background: var(--nb-pink);
+            border: 3px solid var(--nb-ink);
+            border-radius: 14px;
+            box-shadow: 3px 3px 0 var(--nb-ink);
+            animation: none;
+        }
+        .logo-icon svg { fill: var(--nb-ink); }
+        .logo-icon { flex: none; align-self: center; width: 56px; height: 56px; }
+
+        .btn-speedtest {
+            background: var(--nb-pink);
+            color: var(--nb-ink);
+            border: 3px solid var(--nb-ink);
+            font-family: var(--nb-font-display);
+            font-weight: 400;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0 var(--nb-ink);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .btn-speedtest:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--nb-ink); }
+        .btn-speedtest:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--nb-ink); }
+        .btn-speedtest svg { fill: var(--nb-ink); }
+
+        /* submit buttons the old theme painted with gradients (terminal Execute) */
+        button[type="submit"][style*="gradient"] {
+            background: var(--nb-mint) !important;
+            color: var(--nb-ink) !important;
+        }
+
+        .section-kicker {
+            font-family: var(--nb-font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+        }
+        .section-subtitle { color: var(--text-muted); font-weight: 600; font-size: 14px; }
+        .version-badge, .clock {
+            background: var(--nb-card);
+            color: var(--nb-ink);
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 999px;
+            font-weight: 700;
+        }
+        .uptime-text { color: var(--nb-ink); font-weight: 600; }
+        .status-dot { border: 2px solid var(--nb-ink); width: 12px; height: 12px; }
+        .status-dot.online { background: var(--nb-mint); box-shadow: none; }
+        .status-dot.offline { background: var(--nb-coral); box-shadow: none; }
+
+        .speed-panel { background: var(--nb-card); }
+        .speed-label { color: var(--nb-ink); font-weight: 800; }
+        .speed-value { font-size: 26px; }
+        .speed-value.download { color: var(--primary-light); }
+        .speed-value.upload { color: var(--success); }
+        .speed-meta { color: var(--text-muted); font-weight: 600; }
+
+        /* --- sections --- */
+        .section-header { gap: 14px; }
+        .section-title { font-size: 20px; color: var(--nb-ink) !important; text-wrap: balance; }
+        .section-icon {
+            background: var(--nb-violet) !important;
+            color: var(--nb-ink) !important;
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 12px;
+            box-shadow: 3px 3px 0 var(--nb-ink) !important;
+        }
+        .section-icon.blue { background: var(--nb-blue) !important; }
+        .section-icon.green { background: var(--nb-mint) !important; }
+        .section-icon.purple { background: var(--nb-violet) !important; }
+        .section-icon.orange { background: var(--nb-orange) !important; }
+        .section-icon.cyan { background: var(--nb-sky) !important; }
+        .section-icon.mesh { background: var(--nb-pink) !important; }
+        .section-icon svg { color: var(--nb-ink); stroke: currentColor; }
+
+        /* sections the old theme painted as dark panels become white slabs */
+        .section[style] {
+            background: var(--nb-card) !important;
+            border: 3px solid var(--nb-ink) !important;
+            border-radius: var(--radius) !important;
+            box-shadow: 6px 6px 0 var(--nb-ink) !important;
+            padding: 22px !important;
+        }
+
+        /* --- service tiles --- */
+        .service-icon { border: 2.5px solid var(--nb-ink); border-radius: 12px; color: var(--nb-ink); }
+        .service-icon.youtube { background: var(--nb-coral); }
+        .service-icon.pihole { background: var(--nb-violet); }
+        .service-icon.vpn { background: var(--nb-blue); }
+        .service-icon.bot { background: var(--nb-mint); }
+        .service-icon.media { background: var(--nb-orange); }
+        .service-icon.mesh { background: var(--nb-pink); }
+        .service-name { font-family: var(--nb-font-display); font-weight: 400; font-size: 15px; }
+
+        .status-badge {
+            border: 2px solid var(--nb-ink);
+            color: var(--nb-ink);
+            font-weight: 800;
+        }
+        .status-badge.on { background: var(--nb-mint); color: var(--nb-ink); }
+        .status-badge.off { background: var(--nb-coral); color: var(--nb-ink); }
+
+        .btn-service,
+        .btn-service[style] {
+            border: 2.5px solid var(--nb-ink) !important;
+            border-radius: 10px;
+            color: var(--nb-ink) !important;
+            background: var(--nb-blue) !important;
+            box-shadow: 3px 3px 0 var(--nb-ink);
+            font-weight: 800;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .btn-service.on { background: var(--nb-mint) !important; }
+        .btn-service.off { background: var(--nb-coral) !important; }
+        .btn-service:hover, .btn-service.on:hover, .btn-service.off:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 4px 4px 0 var(--nb-ink);
+            color: var(--nb-ink) !important;
+        }
+        .btn-service:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--nb-ink); }
+
+        .pihole-timer input { border: 2.5px solid var(--nb-ink); background: var(--nb-card); color: var(--nb-ink); font-weight: 700; }
+        .pihole-timer button {
+            border: 2.5px solid var(--nb-ink);
+            background: var(--nb-yellow);
+            color: var(--nb-ink);
+            box-shadow: 3px 3px 0 var(--nb-ink);
+            font-weight: 800;
+        }
+        .pihole-timer button:hover { background: var(--nb-orange); color: var(--nb-ink); }
+        .timer-hint { color: var(--text-muted); font-weight: 600; }
+
+        /* --- health meters --- */
+        .health-label { color: var(--nb-ink); font-weight: 800; letter-spacing: 0.06em; }
+        .health-value, .health-value[style] { color: var(--nb-ink) !important; }
+        .health-bar {
+            height: 16px;
+            background: var(--nb-card);
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 99px;
+        }
+        .health-fill { border-radius: 0; border-right: 2.5px solid var(--nb-ink); }
+        .health-fill.cpu { background: var(--nb-blue); }
+        .health-fill.ram { background: var(--nb-yellow); }
+        .health-fill.disk { background: var(--nb-orange); }
+        .health-fill.temp { background: var(--nb-mint); }
+
+        /* --- lists & tables --- */
+        .game-item {
+            background: var(--nb-card);
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 12px;
+        }
+        .game-item:hover { border-color: var(--nb-ink); transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--nb-ink); }
+        .game-domain { color: var(--nb-ink); font-weight: 700; }
+        .game-count, .game-count[style] {
+            color: var(--nb-ink) !important;
+            background: var(--nb-coral) !important;
+            border: 2px solid var(--nb-ink);
+        }
+
+        .query-table th, .sthist th {
+            color: var(--nb-ink);
+            font-weight: 800;
+            border-bottom: 3px solid var(--nb-ink);
+        }
+        .query-table td, .sthist td { border-bottom: 1.5px solid rgba(17, 17, 17, 0.18); }
+        .sthist tbody tr:hover, .query-table tbody tr:hover { background: #fff3c4; }
+        .query-domain { color: var(--nb-ink); }
+        .sthist .t, .sthist .pg { color: var(--text-secondary); }
+        .sthist .dl { color: var(--primary-light); }
+        .sthist .ul { color: var(--success); }
+        .toplist-title { color: var(--nb-ink); font-size: 14px; }
+
+        .query-summary span { border: 2px solid var(--nb-ink); color: var(--nb-ink); }
+        .query-summary .blocked { background: var(--nb-coral); color: var(--nb-ink); }
+        .query-summary .allowed { background: var(--nb-mint); color: var(--nb-ink); }
+
+        /* --- form controls (including inline-styled ones) --- */
+        input, select, textarea,
+        input[style], select[style], textarea[style] {
+            background: var(--nb-card) !important;
+            color: var(--nb-ink) !important;
+            border: 2.5px solid var(--nb-ink) !important;
+            border-radius: 10px !important;
+            box-shadow: none !important;
+            font-weight: 600;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            box-shadow: 3px 3px 0 var(--primary) !important;
+        }
+        input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
+        .query-form button, .query-action {
+            border: 2.5px solid var(--nb-ink);
+            background: var(--nb-yellow);
+            color: var(--nb-ink);
+            font-weight: 800;
+            box-shadow: 3px 3px 0 var(--nb-ink);
+        }
+        .query-action.block { background: var(--nb-coral); color: var(--nb-ink); border-color: var(--nb-ink); }
+        .query-form button:active, .query-action:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--nb-ink); }
+
+        /* other buttons the old theme styled inline */
+        button[style], a[style*="border-radius"] {
+            border: 2.5px solid var(--nb-ink) !important;
+            box-shadow: 3px 3px 0 var(--nb-ink) !important;
+            font-weight: 800 !important;
+        }
+        button[style]:active, a[style*="border-radius"]:active { transform: translate(2px, 2px); }
+
+        code, pre, kbd { font-family: var(--nb-font-mono); }
+        code[style] { background: #f3f0ff !important; border: 1.5px solid var(--nb-ink); }
+        pre[style] {
+            background: #15131f !important;
+            color: #b8f5d2 !important;
+            border: 3px solid var(--nb-ink) !important;
+        }
+
+        /* --- system actions --- */
+        .action-btn {
+            border: 3px solid var(--nb-ink);
+            border-radius: var(--radius-sm);
+            color: var(--nb-ink);
+            font-family: var(--nb-font-display);
+            font-weight: 400;
+            letter-spacing: 0.02em;
+            box-shadow: 5px 5px 0 var(--nb-ink);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .action-btn svg { fill: var(--nb-ink); }
+        .action-btn.restart, .action-btn.restart[style] { background: var(--nb-blue) !important; color: var(--nb-ink) !important; border: 3px solid var(--nb-ink) !important; }
+        .action-btn.reboot { background: var(--nb-coral); color: var(--nb-ink); }
+        .action-btn.update { background: var(--nb-mint); color: var(--nb-ink); }
+        .action-btn.update.needs-reboot { background: var(--nb-yellow); }
+        .action-btn.pihole { background: var(--nb-pink); color: var(--nb-ink); }
+        .action-btn.pihole.is-current { background: var(--nb-card); color: var(--nb-ink); }
+        .action-btn.rollback { background: var(--nb-card); color: var(--nb-ink); border-color: var(--nb-ink); }
+        .action-btn.logout { background: #dcd6ec; color: var(--nb-ink); border-color: var(--nb-ink); }
+        .action-btn:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--nb-ink); }
+        .action-btn:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--nb-ink); }
+
+        /* --- tabs --- */
+        .tabs-nav { border-bottom: 3px solid var(--nb-ink); padding-bottom: 12px; gap: 12px; }
+        .tab-btn {
+            background: var(--nb-card);
+            border: 2.5px solid var(--nb-ink);
+            color: var(--nb-ink);
+            font-weight: 800;
+            box-shadow: 3px 3px 0 var(--nb-ink);
+        }
+        .tab-btn:hover { background: #fff3c4; border-color: var(--nb-ink); color: var(--nb-ink); }
+        .tab-btn.active {
+            background: var(--nb-ink);
+            border-color: var(--nb-ink);
+            color: var(--nb-yellow);
+            box-shadow: 3px 3px 0 var(--nb-pink);
+        }
+
+        /* --- chrome --- */
+        .footer { border-top: 3px solid var(--nb-ink); color: var(--nb-ink); font-weight: 600; }
+        .footer span { color: var(--success); font-weight: 800; }
+        .footer span.offline { color: var(--danger); }
+
+        .toast {
+            background: var(--nb-yellow);
+            color: var(--nb-ink);
+            border: 3px solid var(--nb-ink);
+            box-shadow: 5px 5px 0 var(--nb-ink);
+        }
+        .toast svg { fill: var(--nb-ink); }
+
+        #refreshbar { background: var(--nb-ink); box-shadow: none; height: 4px; border-radius: 0; }
+
+        ::-webkit-scrollbar-thumb { background: var(--nb-ink); border-radius: 10px; border: 2px solid var(--nb-paper); }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3550; }
+
+        /* popups and the progress overlay */
+        #cronModal, #cronLogsModal { background: rgba(236, 230, 255, 0.82) !important; }
+        #cronModal > div, #cronLogsModal > div, #loadingOverlay > div {
+            background: var(--nb-card) !important;
+            border: 3px solid var(--nb-ink) !important;
+            box-shadow: 8px 8px 0 var(--nb-ink) !important;
+        }
+        #loadingOverlay { background: rgba(236, 230, 255, 0.86) !important; }
+        #loaderFill { background: var(--nb-ink) !important; box-shadow: none !important; }
+
+        a:focus-visible, button:focus-visible, .tab-btn:focus-visible, .action-btn:focus-visible {
+            outline: 3px solid var(--primary);
+            outline-offset: 3px;
+        }
     </style>
     <script>
         function switchTab(tabId, btnElement) {
@@ -2419,7 +2787,7 @@ HTML = '''
         <section class="section" style="padding:16px 20px;">
             <div class="section-header" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;width:32px;height:32px;font-size:16px;">
+                    <div class="section-icon cyan" style="background:rgba(6,182,212,0.15);color:#0a7ea4;width:32px;height:32px;font-size:16px;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="width:16px;height:16px;">
                             <circle cx="12" cy="12" r="9"></circle>
                             <path d="M9 12l2 2 4-4"></path>
@@ -2431,15 +2799,15 @@ HTML = '''
             <div class="health-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom:14px;">
                 <div class="health-card" style="--bar-color: #06b6d4; padding:12px 14px;">
                     <div class="health-label" style="font-size:11px;">&#8595; Total RX</div>
-                    <div class="health-value" id="quota_rx" style="color:#22d3ee; font-size:16px; font-weight:700;">{{ net_quota.total_rx }}</div>
+                    <div class="health-value" id="quota_rx" style="color:#0a7ea4; font-size:16px; font-weight:700;">{{ net_quota.total_rx }}</div>
                 </div>
                 <div class="health-card" style="--bar-color: #3b82f6; padding:12px 14px;">
                     <div class="health-label" style="font-size:11px;">&#8593; Total TX</div>
-                    <div class="health-value" id="quota_tx" style="color:#60a5fa; font-size:16px; font-weight:700;">{{ net_quota.total_tx }}</div>
+                    <div class="health-value" id="quota_tx" style="color:#2b44d4; font-size:16px; font-weight:700;">{{ net_quota.total_tx }}</div>
                 </div>
                 <div class="health-card" style="--bar-color: #10b981; padding:12px 14px;">
                     <div class="health-label" style="font-size:11px;">📊 Combined</div>
-                    <div class="health-value" id="quota_total" style="color:#34d399; font-size:16px; font-weight:700;">{{ net_quota.total_combined }}</div>
+                    <div class="health-value" id="quota_total" style="color:#0b8550; font-size:16px; font-weight:700;">{{ net_quota.total_combined }}</div>
                 </div>
             </div>
 
@@ -2454,15 +2822,15 @@ HTML = '''
                 <div class="health-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px;">
                     <div class="health-card" style="--bar-color: #38bdf8; padding:12px 14px;">
                         <div class="health-label" style="font-size:11px;">&#8595; Tailscale RX</div>
-                        <div class="health-value" id="ts_rx" style="color:#38bdf8; font-size:16px; font-weight:700;">{{ tailscale_traffic.rx }}</div>
+                        <div class="health-value" id="ts_rx" style="color:#0a7ea4; font-size:16px; font-weight:700;">{{ tailscale_traffic.rx }}</div>
                     </div>
                     <div class="health-card" style="--bar-color: #6366f1; padding:12px 14px;">
                         <div class="health-label" style="font-size:11px;">&#8593; Tailscale TX</div>
-                        <div class="health-value" id="ts_tx" style="color:#818cf8; font-size:16px; font-weight:700;">{{ tailscale_traffic.tx }}</div>
+                        <div class="health-value" id="ts_tx" style="color:#4b3fd6; font-size:16px; font-weight:700;">{{ tailscale_traffic.tx }}</div>
                     </div>
                     <div class="health-card" style="--bar-color: #a855f7; padding:12px 14px;">
                         <div class="health-label" style="font-size:11px;">📊 Combined TS</div>
-                        <div class="health-value" id="ts_combined" style="color:#c084fc; font-size:16px; font-weight:700;">{{ tailscale_traffic.combined }}</div>
+                        <div class="health-value" id="ts_combined" style="color:#7a2fd0; font-size:16px; font-weight:700;">{{ tailscale_traffic.combined }}</div>
                     </div>
                 </div>
             </div>
@@ -2503,17 +2871,17 @@ HTML = '''
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <span style="width:12px; height:12px; background:#06b6d4; border-radius:3px; box-shadow:0 0 8px #06b6d4;"></span>
                                 <span style="color:var(--text-secondary);">Download (RX):</span>
-                                <strong id="gauge_rx_text" style="color:#22d3ee;">0 B (0%)</strong>
+                                <strong id="gauge_rx_text" style="color:#0a7ea4;">0 B (0%)</strong>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <span style="width:12px; height:12px; background:#3b82f6; border-radius:3px; box-shadow:0 0 8px #3b82f6;"></span>
                                 <span style="color:var(--text-secondary);">Upload (TX):</span>
-                                <strong id="gauge_tx_text" style="color:#60a5fa;">0 B (0%)</strong>
+                                <strong id="gauge_tx_text" style="color:#2b44d4;">0 B (0%)</strong>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; margin-top:4px; border-top:1px solid var(--border); pt:6px;">
                                 <span style="width:12px; height:12px; background:#10b981; border-radius:3px; box-shadow:0 0 8px #10b981;"></span>
                                 <span style="color:var(--text-secondary);">Combined Total:</span>
-                                <strong id="gauge_total_text" style="color:#34d399;">0 B</strong>
+                                <strong id="gauge_total_text" style="color:#0b8550;">0 B</strong>
                             </div>
                         </div>
                     </div>
@@ -2609,7 +2977,7 @@ HTML = '''
                     <div class="service-actions" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px;">
                         <a href="/action/tg_on" class="btn-service on" onclick="runAction('/action/tg_on', 'Starting Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px;">Start</a>
                         <a href="/action/tg_off" class="btn-service off" onclick="runAction('/action/tg_off', 'Stopping Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px;">Stop</a>
-                        <a href="/action/tg_restart" class="btn-service" onclick="runAction('/action/tg_restart', 'Restarting Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3);">Restart</a>
+                        <a href="/action/tg_restart" class="btn-service" onclick="runAction('/action/tg_restart', 'Restarting Telegram Bot', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#2b44d4; border:1px solid rgba(59,130,246,0.3);">Restart</a>
                     </div>
                 </div>
 
@@ -2647,7 +3015,7 @@ HTML = '''
                     <div class="service-actions" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px;">
                         <a href="/action/tailscale_on" class="btn-service on" onclick="runAction('/action/tailscale_on', 'Starting Tailscale', this); return false;" style="padding:6px 2px; font-size:11px;">Start</a>
                         <a href="/action/tailscale_off" class="btn-service off" onclick="runAction('/action/tailscale_off', 'Stopping Tailscale', this); return false;" style="padding:6px 2px; font-size:11px;">Stop</a>
-                        <a href="/action/tailscale_fix" class="btn-service" onclick="runAction('/action/tailscale_fix', 'Restarting Tailscale', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#3b82f6; border:1px solid rgba(59,130,246,0.3);">Restart</a>
+                        <a href="/action/tailscale_fix" class="btn-service" onclick="runAction('/action/tailscale_fix', 'Restarting Tailscale', this); return false;" style="padding:6px 2px; font-size:11px; background:rgba(59,130,246,0.15); color:#2b44d4; border:1px solid rgba(59,130,246,0.3);">Restart</a>
                     </div>
                 </div>
             </div>
@@ -2801,7 +3169,7 @@ HTML = '''
                         <div class="service-actions">
                             <a href="/action/docker/start/{{c.id}}" onclick="saveScroll()" class="btn-service on">Start</a>
                             <a href="/action/docker/stop/{{c.id}}" onclick="saveScroll()" class="btn-service off">Stop</a>
-                            <a href="/action/docker/restart/{{c.id}}" onclick="saveScroll()" class="btn-service" style="background:rgba(59,130,246,0.15); color:#3b82f6;">Restart</a>
+                            <a href="/action/docker/restart/{{c.id}}" onclick="saveScroll()" class="btn-service" style="background:rgba(59,130,246,0.15); color:#2b44d4;">Restart</a>
                         </div>
                     </div>
                     {% endfor %}
@@ -2980,17 +3348,17 @@ HTML = '''
         <section class="section" style="border:1px solid rgba(236,72,153,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(236,72,153,0.07);">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon mesh" style="background:rgba(236,72,153,0.15); color:#ec4899; box-shadow:0 0 15px rgba(236,72,153,0.3);">
+                    <div class="section-icon mesh" style="background:rgba(236,72,153,0.15); color:#c2185b; box-shadow:0 0 15px rgba(236,72,153,0.3);">
                         <svg viewBox="0 0 24 24" fill="#ec4899" width="20" height="20">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
                         </svg>
                     </div>
-                    <h2 class="section-title" style="margin:0; color:#ec4899;">Tailscale Mesh Network Control & Nodes (إدارة وتحكم شبكة التيلسكيل)</h2>
+                    <h2 class="section-title" style="margin:0; color:#c2185b;">Tailscale Mesh Network Control & Nodes (إدارة وتحكم شبكة التيلسكيل)</h2>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <a href="javascript:void(0)" onclick="runWithProgress('Starting Tailscale', 'Activating Tailscale daemon & up...', '/dashboard')" style="background:rgba(52,211,153,0.15); color:#34d399; border:1px solid rgba(52,211,153,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">▶ Connect (Up)</a>
-                    <a href="javascript:void(0)" onclick="runWithProgress('Restarting Tailscale', 'Reconnecting Tailscale mesh network...', '/action/tailscale_fix')" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">🔄 Reconnect</a>
-                    <a href="javascript:void(0)" onclick="runWithProgress('Stopping Tailscale', 'Stopping Tailscale service...', '/action/tailscale_off')" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">⏹ Disconnect</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Starting Tailscale', 'Activating Tailscale daemon & up...', '/dashboard')" style="background:rgba(52,211,153,0.15); color:#0b8550; border:1px solid rgba(52,211,153,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">▶ Connect (Up)</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Restarting Tailscale', 'Reconnecting Tailscale mesh network...', '/action/tailscale_fix')" style="background:rgba(56,189,248,0.15); color:#0a7ea4; border:1px solid rgba(56,189,248,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">🔄 Reconnect</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Stopping Tailscale', 'Stopping Tailscale service...', '/action/tailscale_off')" style="background:rgba(239,68,68,0.15); color:#d3203a; border:1px solid rgba(239,68,68,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">⏹ Disconnect</a>
                 </div>
             </div>
 
@@ -3009,12 +3377,12 @@ HTML = '''
                         <tbody>
                             {% for n in tailscale_nodes %}
                             <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
-                                <td style="padding:10px; font-family:monospace; color:#f472b6;">{{n.ip}}</td>
+                                <td style="padding:10px; font-family:monospace; color:#c2185b;">{{n.ip}}</td>
                                 <td style="padding:10px; font-weight:600; color:var(--text);">{{n.host}}</td>
                                 <td style="padding:10px; color:var(--text-secondary);">{{n.user}}</td>
                                 <td style="padding:10px; color:var(--text-muted);">{{n.os}}</td>
                                 <td style="padding:10px;">
-                                    <span style="background:rgba(52,211,153,0.15); color:#34d399; padding:3px 8px; border-radius:6px; font-size:11px; border:1px solid rgba(52,211,153,0.3);">{{n.status}}</span>
+                                    <span style="background:rgba(52,211,153,0.15); color:#0b8550; padding:3px 8px; border-radius:6px; font-size:11px; border:1px solid rgba(52,211,153,0.3);">{{n.status}}</span>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -3031,14 +3399,14 @@ HTML = '''
         <section class="section" style="border:1px solid rgba(56,189,248,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(56,189,248,0.07);">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon cyan" style="background:rgba(56,189,248,0.15); color:#38bdf8; box-shadow:0 0 15px rgba(56,189,248,0.3);">
+                    <div class="section-icon cyan" style="background:rgba(56,189,248,0.15); color:#0a7ea4; box-shadow:0 0 15px rgba(56,189,248,0.3);">
                         <svg viewBox="0 0 24 24" fill="#38bdf8" width="20" height="20">
                             <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H7v-2h8v2zm3-4H6v-2h12v2zm0-4H6V8h12v2z"/>
                         </svg>
                     </div>
-                    <h2 class="section-title" style="margin:0; color:#38bdf8;">Cyberpunk Web Terminal (محطة أوامر السيرفر التفاعلية)</h2>
+                    <h2 class="section-title" style="margin:0; color:#0a7ea4;">Cyberpunk Web Terminal (محطة أوامر السيرفر التفاعلية)</h2>
                 </div>
-                <span style="font-size:11px; color:#34d399; background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Secure Root Shell</span>
+                <span style="font-size:11px; color:#0b8550; background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Secure Root Shell</span>
             </div>
 
             <div style="margin-top:16px;">
@@ -3118,10 +3486,10 @@ HTML = '''
                                         <a href="/action/cron_toggle/{{j.user}}/{{j.line_idx}}" onclick="saveScroll()" class="btn-service {{'on' if j.active else 'off'}}" style="padding:6px 12px; font-size:11px;">
                                             {{ 'Disable' if j.active else 'Enable' }}
                                         </a>
-                                        <button type="button" onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#3b82f6; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                        <button type="button" onclick="openCronEdit('{{j.user}}', '{{j.line_idx}}', '{{j.schedule}}')" class="btn-service" style="background:rgba(59,130,246,0.1); color:#2b44d4; border:1px solid rgba(59,130,246,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
                                             Edit Time
                                         </button>
-                                        <button type="button" onclick="fetchCronLogs()" class="btn-service" style="background:rgba(16,185,129,0.1); color:#10b981; border:1px solid rgba(16,185,129,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
+                                        <button type="button" onclick="fetchCronLogs()" class="btn-service" style="background:rgba(16,185,129,0.1); color:#0b8550; border:1px solid rgba(16,185,129,0.2); padding:6px 12px; font-size:11px; cursor:pointer;">
                                             📋 View Logs
                                         </button>
                                     </div>
@@ -3222,7 +3590,7 @@ HTML = '''
                     <h3 style="margin:0; color:var(--text); font-size:16px;">📋 Cron Job Execution Logs (سجل تنفيذ المهام المجدولة)</h3>
                     <button type="button" onclick="document.getElementById('cronLogsModal').style.display='none'" style="background:transparent; border:none; color:var(--text-secondary); font-size:18px; cursor:pointer;">✕</button>
                 </div>
-                <pre id="cron_logs_content" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:#38bdf8; overflow-x:auto; max-height:350px; margin-bottom:16px; font-family:monospace; white-space:pre-wrap;">Loading logs...</pre>
+                <pre id="cron_logs_content" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:11px; color:#0a7ea4; overflow-x:auto; max-height:350px; margin-bottom:16px; font-family:monospace; white-space:pre-wrap;">Loading logs...</pre>
                 <div style="display:flex; justify-content:flex-end;">
                     <button type="button" onclick="document.getElementById('cronLogsModal').style.display='none'" style="background:var(--primary); color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer;">Close</button>
                 </div>
@@ -3282,7 +3650,7 @@ HTML = '''
                     _allTrafficReports = data.reports || [];
                     renderTrafficReports(_allTrafficReports);
                 } catch(e) {
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:16px; color:#ef4444;">Failed to load traffic report.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:16px; color:#d3203a;">Failed to load traffic report.</td></tr>`;
                 }
             }
 
@@ -3316,9 +3684,9 @@ HTML = '''
 
                     tbody.innerHTML = `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
                         <td style="padding:10px 8px; font-weight:600; color:var(--primary-light);">📊 Period Sum (${filtered.length} days): ${periodLabel}</td>
-                        <td style="padding:10px 8px; color:#22d3ee; font-weight:700;">${fmtB(sumRx)}</td>
-                        <td style="padding:10px 8px; color:#60a5fa; font-weight:700;">${fmtB(sumTx)}</td>
-                        <td style="padding:10px 8px; color:#34d399; font-weight:700;">${fmtB(sumCombined)}</td>
+                        <td style="padding:10px 8px; color:#0a7ea4; font-weight:700;">${fmtB(sumRx)}</td>
+                        <td style="padding:10px 8px; color:#2b44d4; font-weight:700;">${fmtB(sumTx)}</td>
+                        <td style="padding:10px 8px; color:#0b8550; font-weight:700;">${fmtB(sumCombined)}</td>
                     </tr>`;
                     drawTrafficChart(sumRx, sumTx);
                 } else {
@@ -3990,53 +4358,79 @@ GROUPS_HTML = '''
     <title>Groups</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url("https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&display=swap");
         :root {
-            --bg-primary: #0a0f1c;
-            --bg-secondary: #111827;
-            --bg-glass: rgba(17, 24, 39, 0.7);
-            --primary: #3b82f6;
-            --success: #10b981;
-            --danger: #ef4444;
-            --text: #f9fafb;
-            --border: rgba(255, 255, 255, 0.08);
+            --nb-ink: #111111;
+            --nb-paper: #ece6ff;
+            --nb-yellow: #ffd43b;
+            --nb-mint: #5be3a6;
+            --nb-coral: #ff8f8f;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-        body { background: var(--bg-primary); color: var(--text); min-height: 100vh; padding: 24px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Archivo", system-ui, sans-serif; }
+        body {
+            background-color: var(--nb-paper);
+            background-image: radial-gradient(rgba(17, 17, 17, 0.13) 1px, transparent 1.2px);
+            background-size: 22px 22px;
+            color: var(--nb-ink);
+            min-height: 100vh;
+            padding: 24px;
+        }
         .container { max-width: 1000px; margin: auto; }
         header { margin-bottom: 32px; }
         .back-btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 14px 24px;
-            background: var(--bg-glass);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            color: var(--text);
+            padding: 12px 20px;
+            background: var(--nb-yellow);
+            border: 3px solid var(--nb-ink);
+            border-radius: 12px;
+            color: var(--nb-ink);
             text-decoration: none;
-            font-weight: 700;
-            transition: all 0.3s ease;
+            font-weight: 800;
+            box-shadow: 4px 4px 0 var(--nb-ink);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
-        .back-btn:hover { background: var(--primary); border-color: var(--primary); }
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .back-btn:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--nb-ink); }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
         @media (min-width: 768px) { .grid { grid-template-columns: repeat(3, 1fr); } }
         .card {
-            background: var(--bg-glass);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 24px;
+            background: #ffffff;
+            border: 3px solid var(--nb-ink);
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: 5px 5px 0 var(--nb-ink);
         }
-        .name { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
-        .status { font-size: 11px; font-weight: 700; margin-bottom: 16px; text-transform: uppercase; }
-        .status.on { color: var(--success); }
-        .status.off { color: var(--danger); }
-        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .btn { padding: 12px; text-align: center; border-radius: 12px; font-weight: 700; text-decoration: none; transition: all 0.2s; }
-        .btn.on { background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
-        .btn.off { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
-        .btn:hover { transform: scale(1.05); }
-        .btn.on:hover { background: var(--success); color: white; }
-        .btn.off:hover { background: var(--danger); color: white; }
+        .name { font-family: "Archivo Black", "Archivo", sans-serif; font-size: 15px; margin-bottom: 10px; overflow-wrap: anywhere; }
+        .status {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            padding: 3px 10px;
+            border: 2px solid var(--nb-ink);
+            border-radius: 999px;
+        }
+        .status.on { background: var(--nb-coral); }
+        .status.off { background: var(--nb-mint); }
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn {
+            padding: 11px;
+            text-align: center;
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 10px;
+            color: var(--nb-ink);
+            font-weight: 800;
+            text-decoration: none;
+            box-shadow: 3px 3px 0 var(--nb-ink);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .btn.on { background: var(--nb-mint); }
+        .btn.off { background: var(--nb-coral); }
+        .btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--nb-ink); }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--nb-ink); }
+        .back-btn:focus-visible, .btn:focus-visible { outline: 3px solid #3651ff; outline-offset: 3px; }
     </style>
 </head>
 <body>
@@ -4077,92 +4471,92 @@ LOGIN = '''
     <title>Login - Home Server</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        @import url("https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&display=swap");
+        :root {
+            --nb-ink: #111111;
+            --nb-paper: #ece6ff;
+            --nb-yellow: #ffd43b;
+            --nb-pink: #ff8cc6;
+            --nb-coral: #ff8f8f;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Archivo", system-ui, sans-serif; }
         body {
             min-height: 100vh;
-            background: #0a0f1c;
+            background-color: var(--nb-paper);
+            background-image: radial-gradient(rgba(17, 17, 17, 0.13) 1px, transparent 1.2px);
+            background-size: 22px 22px;
+            color: var(--nb-ink);
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 24px;
         }
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background:
-                radial-gradient(ellipse at 30% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-                radial-gradient(ellipse at 70% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: -1;
-        }
         .login-box {
-            background: rgba(17, 24, 39, 0.8);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 28px;
-            padding: 48px;
+            background: #ffffff;
+            border: 3px solid var(--nb-ink);
+            border-radius: 20px;
+            padding: 44px 40px;
             width: 100%;
             max-width: 420px;
             text-align: center;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-shadow: 8px 8px 0 var(--nb-ink);
         }
         .logo {
             width: 72px;
             height: 72px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border-radius: 20px;
+            background: var(--nb-yellow);
+            border: 3px solid var(--nb-ink);
+            border-radius: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto 24px;
-            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.4);
+            box-shadow: 4px 4px 0 var(--nb-ink);
         }
-        .logo svg { width: 40px; height: 40px; fill: white; }
-        h2 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
-        .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+        .logo svg { width: 38px; height: 38px; fill: var(--nb-ink); }
+        h2 { font-family: "Archivo Black", "Archivo", sans-serif; font-weight: 400; font-size: 30px; text-transform: uppercase; margin-bottom: 8px; }
+        .subtitle { color: #5c5776; font-size: 15px; font-weight: 600; margin-bottom: 28px; }
         input {
             width: 100%;
-            padding: 18px 20px;
+            padding: 16px 18px;
             margin-bottom: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.03);
-            color: #fff;
+            border: 3px solid var(--nb-ink);
+            border-radius: 12px;
+            background: #ffffff;
+            color: var(--nb-ink);
             font-size: 16px;
+            font-weight: 600;
             outline: none;
-            transition: all 0.3s ease;
         }
-        input:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
-        }
-        input::placeholder { color: #6b7280; }
+        input:focus { box-shadow: 4px 4px 0 #3651ff; }
+        input::placeholder { color: #5c5776; }
         button {
             width: 100%;
-            padding: 18px;
-            border: none;
-            border-radius: 16px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            color: #fff;
-            font-weight: 700;
-            font-size: 16px;
+            padding: 16px;
+            border: 3px solid var(--nb-ink);
+            border-radius: 12px;
+            background: var(--nb-pink);
+            color: var(--nb-ink);
+            font-family: "Archivo Black", "Archivo", sans-serif;
+            font-size: 17px;
+            text-transform: uppercase;
             cursor: pointer;
-            transition: all 0.3s ease;
+            box-shadow: 5px 5px 0 var(--nb-ink);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.4);
-        }
-        button:active { transform: scale(0.98); }
+        button:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--nb-ink); }
+        button:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--nb-ink); }
+        button:focus-visible { outline: 3px solid #3651ff; outline-offset: 3px; }
         .error {
-            color: #ef4444;
+            display: inline-block;
             margin-top: 20px;
+            padding: 6px 14px;
+            background: var(--nb-coral);
+            border: 2.5px solid var(--nb-ink);
+            border-radius: 999px;
+            color: var(--nb-ink);
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 800;
         }
     </style>
 </head>
