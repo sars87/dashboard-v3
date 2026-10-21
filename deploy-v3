@@ -87,8 +87,10 @@ chown root:root "$ENV_FILE"
 if [ -z "$(get_env_value DASHBOARD_SECRET_KEY)" ]; then
     set_env_value DASHBOARD_SECRET_KEY "$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 fi
-if ! grep -q '^DASHBOARD_PASSWORD=' "$ENV_FILE"; then
-    set_env_value DASHBOARD_PASSWORD "Sars87"
+if [ -z "$(get_env_value DASHBOARD_PASSWORD)" ]; then
+    NEW_DASHBOARD_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
+    set_env_value DASHBOARD_PASSWORD "$NEW_DASHBOARD_PASSWORD"
+    echo "    Generated dashboard password: $NEW_DASHBOARD_PASSWORD (change it in $ENV_FILE)"
 fi
 if ! grep -q '^DASHBOARD_COOKIE_SECURE=' "$ENV_FILE"; then
     set_env_value DASHBOARD_COOKIE_SECURE "0"
