@@ -1174,18 +1174,53 @@ def speed_history(n=4):
     except:
         return []
 
-def updates_count():
-    return cached("updates", 1800, _updates_count)
+REBOOT_REQUIRED_FILE = "/var/run/reboot-required"
+OS_UPDATE_UNIT = "dashboard-os-update"
+# Runs as its own transient systemd unit so apt survives a dashboard restart
+# (e.g. needrestart bouncing dashboard.service after a python3 upgrade).
+OS_UPDATE_COMMAND = [
+    "sudo", "systemd-run", f"--unit={OS_UPDATE_UNIT}", "--collect",
+    "--description=Dashboard OS update", "--setenv=DEBIAN_FRONTEND=noninteractive",
+    "/bin/sh", "-c",
+    "apt-get update && apt-get -y -o Dpkg::Options::=--force-confold "
+    "-o Dpkg::Options::=--force-confdef upgrade --with-new-pkgs",
+]
 
-def _updates_count():
+def _upgradable_count():
     try:
-        x = sh("bash -c \"apt list --upgradable 2>/dev/null | tail -n +2 | wc -l\"")
-        n = int(x.strip() or 0)
-        if n <= 0:
-            return "System Up To Date"
-        return f"Updates Available ({n})"
-    except:
-        return "Update OS"
+        out = subprocess.run(["apt", "list", "--upgradable"], capture_output=True,
+                             text=True, timeout=20, check=False).stdout
+        return sum(1 for line in out.splitlines() if "[upgradable from:" in line)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+def os_update_running():
+    return svc(OS_UPDATE_UNIT) in ("active", "activating")
+
+def update_status():
+    """State for the OS update button: running, reboot, available, current or unknown."""
+    if os_update_running():
+        # Recount once the job finishes instead of showing the stale number.
+        _CACHE.pop("updates", None)
+        return {"state": "running", "label": "Updating...", "count": 0}
+    if os.path.exists(REBOOT_REQUIRED_FILE):
+        return {"state": "reboot", "label": "Reboot Required", "count": 0}
+    n = cached("updates", 1800, _upgradable_count)
+    if n is None:
+        return {"state": "unknown", "label": "Update OS", "count": 0}
+    if n <= 0:
+        return {"state": "current", "label": "System Up To Date", "count": 0}
+    return {"state": "available", "label": f"Updates Available ({n})", "count": n}
+
+def start_os_update():
+    if os_update_running():
+        return True
+    try:
+        # systemd-run refuses a second job with the same unit name.
+        return subprocess.run(OS_UPDATE_COMMAND, capture_output=True,
+                              timeout=15, check=False).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 def _format_outage_duration(total_seconds):
     try:
@@ -1943,6 +1978,21 @@ HTML = '''
             background: linear-gradient(135deg, var(--success), #059669);
             color: white;
         }
+
+        .action-btn.update.needs-reboot {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .action-btn.update.is-running {
+            opacity: 0.8;
+            cursor: progress;
+        }
+
+        .action-btn.update.is-running svg {
+            animation: upd-spin 1.2s linear infinite;
+        }
+
+        @keyframes upd-spin { to { transform: rotate(360deg); } }
 
         .action-btn.pihole {
             background: linear-gradient(135deg, #f60d1a, #b91c1c);
@@ -3346,11 +3396,11 @@ HTML = '''
                     </svg>
                     Reboot OS
                 </a>
-                <a href="javascript:void(0)" class="action-btn update" onclick="runWithProgress('Updating Ubuntu System', 'Running apt update & upgrade in background...', '/dashboard')">
+                <a href="javascript:void(0)" id="upd_btn" data-state="{{upd.state}}" class="action-btn update{{ ' needs-reboot' if upd.state == 'reboot' else '' }}{{ ' is-running' if upd.state == 'running' else '' }}" onclick="osUpdateClick(); return false;">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.56 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.44 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                     </svg>
-                    <span id="upd_label">{{upd}}</span>
+                    <span id="upd_label">{{upd.label}}</span>
                 </a>
                 <a href="javascript:void(0)" class="action-btn pihole" onclick="runWithProgress('Updating Pi-hole', 'Updating Pi-hole blocklists & software...', '/dashboard')">
                     <svg viewBox="0 0 24 24" fill="currentColor">
@@ -3766,6 +3816,57 @@ HTML = '''
     </div>
 
     <script>
+        function applyUpdateState(s) {
+            const btn = document.getElementById('upd_btn');
+            const label = document.getElementById('upd_label');
+            if (!btn || !label || !s) return;
+            btn.dataset.state = s.state;
+            btn.classList.toggle('needs-reboot', s.state === 'reboot');
+            btn.classList.toggle('is-running', s.state === 'running');
+            label.innerText = s.label;
+        }
+
+        let updatePoll = null;
+        async function refreshUpdateState() {
+            try {
+                const r = await fetch('/api/update-status', {cache: 'no-store'});
+                const j = await r.json();
+                if (!j.ok) return;
+                applyUpdateState(j);
+                if (j.state !== 'running' && updatePoll) {
+                    clearInterval(updatePoll);
+                    updatePoll = null;
+                }
+            } catch (e) {}
+        }
+
+        function watchUpdate() {
+            if (!updatePoll) updatePoll = setInterval(refreshUpdateState, 5000);
+        }
+
+        async function osUpdateClick() {
+            const btn = document.getElementById('upd_btn');
+            const state = btn ? btn.dataset.state : '';
+            if (state === 'running') return;
+            if (state === 'reboot') {
+                if (confirm('Updates are installed. Reboot the server now?')) window.location.href = '/action/reboot';
+                return;
+            }
+            if (state === 'current' && !confirm('System looks up to date. Check for updates anyway?')) return;
+            applyUpdateState({state: 'running', label: 'Updating...'});
+            try {
+                const r = await fetch('/action/update_system', {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}});
+                const j = await r.json();
+                if (j.status !== 'success') {
+                    applyUpdateState({state: 'unknown', label: 'Update Failed'});
+                    return;
+                }
+            } catch (e) {}
+            watchUpdate();
+        }
+
+        if (document.getElementById('upd_btn')?.dataset.state === 'running') watchUpdate();
+
         function runWithProgress(title, desc, url) {
             const overlay = document.getElementById('loadingOverlay');
             const lTitle = document.getElementById('loaderTitle');
@@ -4053,7 +4154,7 @@ def dashboard():
         "disk": (disk, ()),
         "temp": (temp, ()),
         "reboot": (reboot_info, ()),
-        "upd": (updates_count, ()),
+        "upd": (update_status, ()),
         "groups": (pihole_groups, ()),
         "spd": (speedtest, ()),
         "spdhist": (speed_history, ()),
@@ -4108,6 +4209,13 @@ def internet_outages_api():
     if not logged():
         return jsonify({"ok": False, "error": "Not logged in"}), 401
     return jsonify({"ok": True, "outages": internet_outage_rows()})
+
+
+@app.route("/api/update-status")
+def update_status_api():
+    if not logged():
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+    return jsonify({"ok": True, **update_status()})
 
 
 @app.route("/api/quick-status")
@@ -4643,6 +4751,11 @@ def action(name):
         return redirect("/")
     if name == "pihole_on":
         clear_pihole_pause_state()
+    if name == "update_system":
+        ok = start_os_update()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST":
+            return jsonify({"status": "success" if ok else "error", "action": name})
+        return redirect("/dashboard")
     if name.startswith(("group_on/", "group_off/")):
         group_action, gid_text = name.split("/", 1)
         if not re.fullmatch(r"[1-9][0-9]*", gid_text):
@@ -4677,18 +4790,17 @@ def action(name):
         "tailscale_off": [["sudo", "systemctl", "stop", "tailscaled"]],
         "tailscale_fix": [["sudo", "systemctl", "restart", "tailscaled"], ["sudo", "tailscale", "up"]],
         "restart_all": [["sudo", "systemctl", "restart", "openvpn-client@proton", "tg-control.timer", "tailscaled", "jellyfin", "filebrowser"]],
-        "update_system": [["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"], ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-y", "-o", "Dpkg::Options::=--force-confold", "-o", "Dpkg::Options::=--force-confdef", "upgrade"]],
         "pihole_update": [["sudo", "pihole", "-up", "-y"]],
         "rollback": [["sudo", "/usr/local/bin/dashboard_manager.sh", "rollback-latest"]],
         "manual_speedtest": [["sudo", "/usr/local/bin/run_speedtest.sh"]],
         "reboot": [["sudo", "reboot"]]
     }
-    bg = {"update_system", "manual_speedtest", "pihole_update"}
+    bg = {"manual_speedtest", "pihole_update"}
     if name in action_sequences:
         sequences = action_sequences[name]
         try:
             if name in bg:
-                log_path = "/tmp/update.log" if name == "update_system" else "/tmp/pihole_update.log" if name == "pihole_update" else "/tmp/speedtest.log"
+                log_path = "/tmp/pihole_update.log" if name == "pihole_update" else "/tmp/speedtest.log"
                 threading.Thread(target=run_action_sequence,
                                    args=(sequences, log_path), daemon=True).start()
             else:
