@@ -961,12 +961,18 @@ def _ph_get(path):
             _PH_SID["sid"] = None
     return None
 
+PIHOLE_SQL_TIMEOUT = 3
+
 def _pihole_sql(sql, database="/etc/pihole/pihole-FTL.db"):
     """Run a Pi-hole SQLite read without shell quoting problems."""
+    # `timeout` runs under sudo so it can kill the root-owned sqlite3 itself.
+    # Killing only the sudo wrapper left orphaned full-table scans thrashing
+    # the disk long after the request gave up.
     try:
         result = subprocess.run(
-            ["sudo", "sqlite3", "-separator", "|", database, sql],
-            capture_output=True, text=True, timeout=2, check=False)
+            ["sudo", "timeout", "-k", "1", str(PIHOLE_SQL_TIMEOUT),
+             "sqlite3", "-separator", "|", database, sql],
+            capture_output=True, text=True, timeout=PIHOLE_SQL_TIMEOUT + 2, check=False)
         return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -978,6 +984,9 @@ def _gravity_count():
         return 0
 
 def pihole_stats():
+    return cached("phstats", 15, _pihole_stats)
+
+def _pihole_stats():
     # Live home-screen numbers from the FTL API, with a DB fallback if it is down.
     try:
         j = _ph_get("/stats/summary")
@@ -1022,14 +1031,14 @@ def adult_attempts():
 def _adult_attempts(n=8):
     # Recent attempts to reach domains on the adult blocklists (last 24h).
     try:
-        out = sh(f"""sudo sqlite3 /etc/pihole/pihole-FTL.db "
+        out = _pihole_sql(f"""
 ATTACH '/etc/pihole/gravity.db' AS g;
 SELECT q.domain, q.client, count(*) c, max(q.timestamp) t
 FROM queries q
 WHERE q.timestamp >= strftime('%s','now','-1 day')
   AND q.status IN (1,4,5,6,7,8,9,10,11,15,16,18)
   AND q.domain IN (SELECT domain FROM g.gravity WHERE adlist_id IN ({ADULT_ADLISTS}))
-GROUP BY q.domain, q.client ORDER BY t DESC LIMIT {n};" """)
+GROUP BY q.domain, q.client ORDER BY t DESC LIMIT {int(n)};""")
         rows = []
         for line in out.splitlines():
             x = line.split("|")
@@ -1041,7 +1050,7 @@ GROUP BY q.domain, q.client ORDER BY t DESC LIMIT {n};" """)
         return []
 
 def top_blocked(n=5):
-    return cached("topdom", 30, lambda: _top_blocked(n))
+    return cached("topdom", 120, lambda: _top_blocked(n))
 
 def _top_blocked(n):
     try:
@@ -1053,17 +1062,12 @@ def _top_blocked(n):
     try:
         sql = f"SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') AND status IN (1,4,5,6,7,8,9,10,11,15,16,18) GROUP BY domain ORDER BY count(*) DESC LIMIT {int(n)};"
         out = _pihole_sql(sql)
-        rows = [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
-        if rows:
-            return rows
-        # Older FTL versions use different numeric blocked-status values.
-        broad = _pihole_sql(f"SELECT domain, count(*) FROM queries WHERE timestamp >= strftime('%s','now','-1 day') GROUP BY domain ORDER BY count(*) DESC LIMIT {int(n)};")
-        return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in broad.splitlines()) if len(p) == 2]
+        return [{"domain": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
     except Exception:
         return []
 
 def top_clients(n=5):
-    return cached("topcli", 30, lambda: _top_clients(n))
+    return cached("topcli", 120, lambda: _top_clients(n))
 
 def _top_clients(n):
     try:
@@ -1075,12 +1079,7 @@ def _top_clients(n):
     try:
         sql = f"SELECT client, count(*) FROM queries WHERE timestamp >= strftime('%s','now','start of day') GROUP BY client ORDER BY count(*) DESC LIMIT {int(n)};"
         out = _pihole_sql(sql)
-        rows = [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
-        if rows:
-            return rows
-        # Fall back to all retained queries when the local clock/date filter differs.
-        broad = _pihole_sql(f"SELECT client, count(*) FROM queries GROUP BY client ORDER BY count(*) DESC LIMIT {int(n)};")
-        return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in broad.splitlines()) if len(p) == 2]
+        return [{"name": p[0], "count": int(p[1])} for p in (line.split('|') for line in out.splitlines()) if len(p) == 2]
     except Exception:
         return []
 
@@ -1088,7 +1087,7 @@ def query_counts_24h(domain_filter="", client_filter=""):
     domain_filter = re.sub(r"[^a-zA-Z0-9._:-]", "", domain_filter or "")[:100]
     client_filter = re.sub(r"[^a-zA-Z0-9._:-]", "", client_filter or "")[:100]
     key = f"query_counts_24h:{domain_filter.lower()}:{client_filter.lower()}"
-    return cached(key, 30, lambda: _query_counts_24h(domain_filter, client_filter))
+    return cached(key, 60, lambda: _query_counts_24h(domain_filter, client_filter))
 
 def _query_counts_24h(domain_filter="", client_filter=""):
     # Count every matching DNS query in the last 24 hours, not just the five
@@ -1106,12 +1105,9 @@ SELECT
 FROM queries WHERE {' AND '.join(clauses)};
 """
     try:
-        result = subprocess.run(
-            ["sudo", "sqlite3", "-separator", "|", "/etc/pihole/pihole-FTL.db", sql],
-            capture_output=True, text=True, timeout=2, check=False)
-        values = result.stdout.strip().split("|")
+        values = _pihole_sql(sql).split("|")
         return {"blocked": int(values[0] or 0), "allowed": int(values[1] or 0)}
-    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+    except (ValueError, IndexError):
         return {"blocked": 0, "allowed": 0}
 
 def recent_queries(domain_filter="", client_filter="", n=5):
@@ -1130,19 +1126,17 @@ SELECT datetime(q.timestamp, 'unixepoch', 'localtime'), q.domain, q.client, q.st
 FROM queries q WHERE %s ORDER BY q.timestamp DESC LIMIT %d;
 """ % (" AND ".join(clauses), n)
     try:
-        result = subprocess.run(
-            ["sudo", "sqlite3", "-separator", "|", "/etc/pihole/pihole-FTL.db", sql],
-            capture_output=True, text=True, timeout=2, check=False)
+        out = _pihole_sql(sql)
         blocked = {1, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 18}
         rows = []
-        for line in result.stdout.splitlines():
+        for line in out.splitlines():
             values = line.split("|", 3)
             if len(values) == 4:
                 status = int(values[3]) if values[3].isdigit() else -1
                 rows.append({"time": values[0], "domain": values[1], "client": values[2],
                              "status": "Blocked" if status in blocked else "Allowed"})
         return rows, domain_filter, client_filter
-    except (OSError, subprocess.TimeoutExpired):
+    except ValueError:
         return [], domain_filter, client_filter
 
 def speedtest():
