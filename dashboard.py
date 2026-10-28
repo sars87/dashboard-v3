@@ -28,9 +28,13 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v11.0"
+VERSION = "v11.1"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
+DEPLOY_REPO_ALIASES = {DEFAULT_REPO_URL, "git@github.com:sars87/dashboard-v3.git"}
+ROLLBACK_DIR = "/home/saif/backup"
+# dashboard_manager.sh rollback-latest restores this file.
+ROLLBACK_FILE = os.path.join(ROLLBACK_DIR, "dashboard_latest.py")
 ELECTRICITY_CONFIG_FILE = "/home/saif/.dashboard_electricity_config.json"
 DEFAULT_ELECTRICITY_BACKEND_URL = "http://127.0.0.1:3000"
 INTERNET_STATE_FILE = os.environ.get("DASHBOARD_INTERNET_STATE_FILE", "/home/saif/.dashboard_internet_outages.json")
@@ -548,8 +552,22 @@ def load_traffic_state():
         pass
     return None
 
+_TRAFFIC_LOCK = threading.Lock()
+TRAFFIC_SAMPLE_SECONDS = 600
+
 def log_traffic_history(total_rx, total_tx):
     """Add counter deltas to today's usage; handles interface/server counter resets."""
+    with _TRAFFIC_LOCK:
+        _log_traffic_history(total_rx, total_tx)
+
+def traffic_sampler():
+    # Page loads used to be the only samples, so days nobody opened the
+    # dashboard were missing and their traffic landed on the next visit.
+    while True:
+        network_traffic_quota()
+        time.sleep(TRAFFIC_SAMPLE_SECONDS)
+
+def _log_traffic_history(total_rx, total_tx):
     try:
         import datetime
         today = datetime.date.today().isoformat()
@@ -833,6 +851,11 @@ def explain_cron_schedule(sched):
     else:
         return f"{time_desc}, {dow_desc}"
 
+_CRON_FIELD = r"(?:[0-9*/,-]+|[A-Za-z]{3}(?:[-,][A-Za-z]{3})*)"
+CRON_ENTRY_RE = re.compile(
+    rf"^(?:@(?:reboot|yearly|annually|monthly|weekly|daily|midnight|hourly)|{_CRON_FIELD}(?:\s+{_CRON_FIELD}){{4}})\s+\S")
+CRON_SAMPLE_ENTRY = "tar -zcf /var/backups/home.tgz /home/"
+
 def cron_jobs():
     jobs = []
     try:
@@ -849,14 +872,20 @@ def cron_jobs():
                 is_disabled = line.startswith("#")
                 if is_disabled:
                     line = line.lstrip("#").strip()
-                
-                parts = line.split(None, 5)
-                if len(parts) >= 6:
+
+                # Only real (or commented-out) cron entries are jobs; skip the
+                # crontab's explanatory comments, VAR=value lines and the
+                # sample entry from Ubuntu's default crontab header.
+                if not CRON_ENTRY_RE.match(line) or CRON_SAMPLE_ENTRY in line:
+                    continue
+
+                if line.startswith("@"):
+                    sched, _, cmd = line.partition(" ")
+                    cmd = cmd.strip()
+                else:
+                    parts = line.split(None, 5)
                     sched = " ".join(parts[:5])
                     cmd = parts[5]
-                else:
-                    sched = "Custom"
-                    cmd = line
                 
                 desc = "Scheduled system task (مهمة نظام مجدولة)"
                 long_desc = "Executes automated system operations in the background."
@@ -3356,7 +3385,7 @@ HTML = '''
                     <h2 class="section-title" style="margin:0; color:#c2185b;">Tailscale Mesh Network Control & Nodes (إدارة وتحكم شبكة التيلسكيل)</h2>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                    <a href="javascript:void(0)" onclick="runWithProgress('Starting Tailscale', 'Activating Tailscale daemon & up...', '/dashboard')" style="background:rgba(52,211,153,0.15); color:#0b8550; border:1px solid rgba(52,211,153,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">▶ Connect (Up)</a>
+                    <a href="javascript:void(0)" onclick="runWithProgress('Starting Tailscale', 'Activating Tailscale daemon & up...', '/action/tailscale_on')" style="background:rgba(52,211,153,0.15); color:#0b8550; border:1px solid rgba(52,211,153,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">▶ Connect (Up)</a>
                     <a href="javascript:void(0)" onclick="runWithProgress('Restarting Tailscale', 'Reconnecting Tailscale mesh network...', '/action/tailscale_fix')" style="background:rgba(56,189,248,0.15); color:#0a7ea4; border:1px solid rgba(56,189,248,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">🔄 Reconnect</a>
                     <a href="javascript:void(0)" onclick="runWithProgress('Stopping Tailscale', 'Stopping Tailscale service...', '/action/tailscale_off')" style="background:rgba(239,68,68,0.15); color:#d3203a; border:1px solid rgba(239,68,68,0.3); padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; text-decoration:none;">⏹ Disconnect</a>
                 </div>
@@ -3834,7 +3863,7 @@ HTML = '''
                     </svg>
                     <span id="phupd_label">{{phupd.label}}</span>
                 </a>
-                <a href="/action/rollback" class="action-btn rollback">
+                <a href="/action/rollback" class="action-btn rollback" title="Restore {{rollback_ver}}" onclick="return confirm('Roll the dashboard back to {{rollback_ver}}? The current version will be replaced.')">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>
                     </svg>
@@ -3931,6 +3960,25 @@ HTML = '''
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 2200);
         }
+
+        // Report the outcome of "Deploy Now from GitHub", then drop the query
+        // so a manual refresh doesn't repeat the message.
+        (function showDeployResult() {
+            const params = new URLSearchParams(window.location.search);
+            const result = params.get('deploy');
+            if (!result) return;
+            const steps = {git: 'pulling from GitHub', check: 'the new file has a syntax error', install: 'installing the file'};
+            const messages = {
+                ok: 'Deployed ' + (params.get('version') || 'latest version') + ' from GitHub. Restarting...',
+                failed: 'Deploy failed while ' + (steps[params.get('step')] || 'deploying') + '. Nothing was changed.',
+                rejected: 'Deploy refused: only the sars87/dashboard-v3 repository is allowed.'
+            };
+            window.addEventListener('load', () => {
+                showToast(messages[result] || 'Deploy finished.');
+                if (result === 'ok') setTimeout(() => window.location.replace('/dashboard'), 6000);
+            });
+            history.replaceState(null, '', '/dashboard');
+        })();
 
         async function runAction(url, msg, btnElement){
             const btn = btnElement || event.currentTarget;
@@ -4625,6 +4673,7 @@ def dashboard():
         "disk": (disk, ()),
         "temp": (temp, ()),
         "reboot": (reboot_info, ()),
+        "rollback_ver": (rollback_version, ()),
         "upd": (update_status, ()),
         "phupd": (pihole_update_status, ()),
         "groups": (pihole_groups, ()),
@@ -4664,7 +4713,7 @@ def dashboard():
         adult=values["adult"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
         fb=values["fb"], tailscale=values["tailscale"], uptime=values["uptime"],
         cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
-        reboot=values["reboot"], upd=values["upd"], phupd=values["phupd"], groups=values["groups"], spd=values["spd"],
+        reboot=values["reboot"], rollback_ver=values["rollback_ver"], upd=values["upd"], phupd=values["phupd"], groups=values["groups"], spd=values["spd"],
         spdhist=values["spdhist"], bat=values["bat"], docker=values["docker"],
         cronjobs=values["cronjobs"], secure_notes=get_secure_notes(),
         fw_status=values["fw_status"], ssh_failures=values["ssh_failures"],
@@ -5047,39 +5096,80 @@ def web_deploy():
         return redirect("/")
 
     # Deployment source is fixed to the trusted repository; never interpolate a
-    # browser-supplied URL into a shell command.
+    # browser-supplied URL into a shell command. The SSH spelling of the same
+    # repository is accepted too, but pulls always use public HTTPS.
     repo_url = request.form.get("repo_url", "").strip() or get_repo_url()
-    if repo_url != DEFAULT_REPO_URL:
-        return redirect("/dashboard")
+    if repo_url not in DEPLOY_REPO_ALIASES:
+        return redirect("/dashboard?deploy=rejected")
     set_repo_url(DEFAULT_REPO_URL)
 
     target_dir = os.path.expanduser("~/deployments/dashboard-v3")
+    step = "git"
     try:
         os.makedirs(os.path.dirname(target_dir), exist_ok=True)
         if os.path.isdir(os.path.join(target_dir, ".git")):
-            subprocess.run(["git", "-C", target_dir, "remote", "set-url", "origin", repo_url],
+            subprocess.run(["git", "-C", target_dir, "remote", "set-url", "origin", DEFAULT_REPO_URL],
                            check=True, capture_output=True, text=True, timeout=20)
             subprocess.run(["git", "-C", target_dir, "reset", "--hard", "HEAD"],
                            check=True, capture_output=True, text=True, timeout=20)
             subprocess.run(["git", "-C", target_dir, "pull", "--ff-only", "origin", "main"],
                            check=True, capture_output=True, text=True, timeout=60)
         else:
-            subprocess.run(["git", "clone", "--", repo_url, target_dir],
+            subprocess.run(["git", "clone", "--", DEFAULT_REPO_URL, target_dir],
                            check=True, capture_output=True, text=True, timeout=120)
 
+        step = "check"
         source_path = os.path.join(target_dir, "dashboard.py")
         destination_path = os.path.expanduser("~/dashboard.py")
-        if os.path.isfile(source_path):
+        with open(source_path, "r", encoding="utf-8") as handle:
+            compile(handle.read(), source_path, "exec")
+
+        step = "install"
+        if not _same_file(source_path, destination_path):
+            save_rollback_point(destination_path)
             shutil.copy2(source_path, destination_path)
-        try:
-            subprocess.run(["sudo", "systemctl", "restart", "dashboard.service"],
-                           check=False, capture_output=True, text=True, timeout=30)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-    time.sleep(1)
-    return redirect("/dashboard")
+        schedule_dashboard_restart()
+    except (OSError, SyntaxError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return redirect("/dashboard?" + urlencode({"deploy": "failed", "step": step}))
+    return redirect("/dashboard?" + urlencode({"deploy": "ok", "version": _file_version(source_path)}))
+
+
+def _same_file(a, b):
+    try:
+        with open(a, "rb") as fa, open(b, "rb") as fb:
+            return fa.read() == fb.read()
+    except OSError:
+        return False
+
+
+def _file_version(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            match = re.search(r'^VERSION = "([^"]+)"', handle.read(), re.M)
+        return match.group(1) if match else ""
+    except OSError:
+        return ""
+
+
+def save_rollback_point(live_path):
+    """Keep the version being replaced so Rollback returns exactly one step."""
+    os.makedirs(ROLLBACK_DIR, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    shutil.copy2(live_path, os.path.join(ROLLBACK_DIR, f"dashboard_before_deploy_{stamp}.py"))
+    shutil.copy2(live_path, ROLLBACK_FILE)
+
+
+def rollback_version():
+    return _file_version(ROLLBACK_FILE) or "unknown"
+
+
+def schedule_dashboard_restart():
+    # A transient timer outside this service's cgroup restarts it after the
+    # response is sent; restarting inline would kill the request mid-flight.
+    subprocess.run(["sudo", "systemd-run", "--on-active=2", "--collect",
+                    "--description=Dashboard restart after deploy",
+                    "/usr/bin/systemctl", "restart", "dashboard.service"],
+                   check=False, capture_output=True, text=True, timeout=15)
 
 @app.route("/net")
 def net():
@@ -5223,6 +5313,16 @@ def action(name):
         return redirect("/")
     if name == "pihole_on":
         clear_pihole_pause_state()
+    if name == "rollback":
+        if os.path.isfile(ROLLBACK_FILE):
+            try:
+                with open(ROLLBACK_FILE, "r", encoding="utf-8") as handle:
+                    compile(handle.read(), ROLLBACK_FILE, "exec")
+                shutil.copy2(ROLLBACK_FILE, os.path.expanduser("~/dashboard.py"))
+                schedule_dashboard_restart()
+            except (OSError, SyntaxError):
+                pass
+        return redirect("/dashboard")
     if name in ("update_system", "pihole_update"):
         ok = start_os_update() if name == "update_system" else start_pihole_update()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST":
@@ -5261,8 +5361,10 @@ def action(name):
         "tailscale_on": [["sudo", "systemctl", "start", "tailscaled"], ["sudo", "tailscale", "up"]],
         "tailscale_off": [["sudo", "systemctl", "stop", "tailscaled"]],
         "tailscale_fix": [["sudo", "systemctl", "restart", "tailscaled"], ["sudo", "tailscale", "up"]],
-        "restart_all": [["sudo", "systemctl", "restart", "openvpn-client@proton", "tg-control.timer", "tailscaled", "jellyfin", "filebrowser"]],
-        "rollback": [["sudo", "/usr/local/bin/dashboard_manager.sh", "rollback-latest"]],
+        # try-restart only bounces units that are already running, so services
+        # kept off on purpose stay off. Tailscale has its own Restart button;
+        # bouncing it here would drop a remote session.
+        "restart_all": [["sudo", "systemctl", "try-restart", "openvpn-client@proton", "tg-control.timer", "jellyfin", "filebrowser"]],
         "manual_speedtest": [["sudo", "/usr/local/bin/run_speedtest.sh"]],
         "reboot": [["sudo", "reboot"]]
     }
@@ -5284,4 +5386,5 @@ def action(name):
     return redirect("/dashboard")
 
 if __name__ == "__main__":
+    threading.Thread(target=traffic_sampler, name="traffic-sampler", daemon=True).start()
     app.run(host="0.0.0.0", port=8088, threaded=True)
