@@ -159,6 +159,9 @@ else
 fi
 
 install -m 0755 "$TARGET_DIR/deploy-v3" /usr/local/bin/deploy-v3
+if [ -f "$TARGET_DIR/run_speedtest.sh" ]; then
+    install -m 0755 "$TARGET_DIR/run_speedtest.sh" /usr/local/bin/run_speedtest.sh
+fi
 
 echo "=========================================================="
 echo "v10.6 Deployed Successfully for $TARGET_USER"
