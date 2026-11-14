@@ -28,7 +28,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v12.0"
+VERSION = "v12.1"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 DEPLOY_REPO_ALIASES = {DEFAULT_REPO_URL, "git@github.com:sars87/dashboard-v3.git"}
@@ -673,11 +673,67 @@ def youtube_target_groups():
     return [g for g in pihole_groups() if str(g.get("name", "")) != "YouTube_Block"]
 
 
+_CPU_PREV = {"idle": None, "total": None, "pct": 0}
+
+def _cpu_sample():
+    with open("/proc/stat") as f:
+        v = [int(x) for x in f.readline().split()[1:]]
+    return v[3] + (v[4] if len(v) > 4 else 0), sum(v)
+
+CPU_SAMPLE_SECONDS = 5
+
+def _cpu_tick():
+    idle, total = _cpu_sample()
+    if _CPU_PREV["total"] is not None:
+        d_idle, d_total = idle - _CPU_PREV["idle"], total - _CPU_PREV["total"]
+        if d_total > 0:
+            _CPU_PREV["pct"] = int(round((1 - d_idle / d_total) * 100))
+    _CPU_PREV["idle"], _CPU_PREV["total"] = idle, total
+
+def cpu_sampler():
+    # Measured in the background, so the figure is the average of the last
+    # few seconds *before* a request, not the spike caused by building the
+    # page itself (`top -bn1` at render time read 70-100% on every load).
+    while True:
+        try:
+            _cpu_tick()
+        except (OSError, ValueError, IndexError, ZeroDivisionError):
+            pass
+        time.sleep(CPU_SAMPLE_SECONDS)
+
 def cpu():
+    return max(0, min(100, _CPU_PREV["pct"]))
+
+def system_details():
+    """Numbers behind the Resources Health cards: load, memory and disk sizes."""
+    details = {}
     try:
-        return int(float(sh("top -bn1 | awk '/Cpu\\(s\\)/ {print $2+$4}'") or 0))
-    except:
-        return 0
+        with open("/proc/loadavg") as f:
+            details["load"] = f"{float(f.read().split()[0]):.2f}"
+        details["cores"] = os.cpu_count() or 1
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        mem = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, _, value = line.partition(":")
+                mem[key] = int(value.split()[0])
+        total = mem["MemTotal"]
+        available = mem.get("MemAvailable", mem.get("MemFree", 0))
+        details["ram_used_gb"] = round((total - available) / 1048576, 1)
+        details["ram_total_gb"] = round(total / 1048576, 1)
+    except (OSError, ValueError, KeyError, IndexError):
+        pass
+    try:
+        st = os.statvfs("/")
+        gib = 1024 ** 3
+        details["disk_total_gb"] = round(st.f_blocks * st.f_frsize / gib)
+        details["disk_used_gb"] = round((st.f_blocks - st.f_bfree) * st.f_frsize / gib)
+        details["disk_free_gb"] = round(st.f_bavail * st.f_frsize / gib)
+    except OSError:
+        pass
+    return details
 
 def ram():
     try:
@@ -1055,33 +1111,6 @@ def _pihole_stats_db():
     except:
         return {"total": "N/A", "blocked": "N/A", "pct": 0, "domains": "N/A", "clients": "N/A"}
 
-# Adlist IDs of the adult/porn blocklists configured in Pi-hole
-ADULT_ADLISTS = "58,59,62"
-
-def adult_attempts():
-    return cached("adult", 60, _adult_attempts)
-
-def _adult_attempts(n=8):
-    # Recent attempts to reach domains on the adult blocklists (last 24h).
-    try:
-        out = _pihole_sql(f"""
-ATTACH '/etc/pihole/gravity.db' AS g;
-SELECT q.domain, q.client, count(*) c, max(q.timestamp) t
-FROM queries q
-WHERE q.timestamp >= strftime('%s','now','-1 day')
-  AND q.status IN (1,4,5,6,7,8,9,10,11,15,16,18)
-  AND q.domain IN (SELECT domain FROM g.gravity WHERE adlist_id IN ({ADULT_ADLISTS}))
-GROUP BY q.domain, q.client ORDER BY t DESC LIMIT {int(n)};""")
-        rows = []
-        for line in out.splitlines():
-            x = line.split("|")
-            if len(x) == 4:
-                ts = time.strftime("%m-%d %H:%M", time.localtime(int(float(x[3]))))
-                rows.append({"domain": x[0], "client": x[1], "count": x[2], "time": ts})
-        return rows
-    except:
-        return []
-
 def top_blocked(n=5):
     return cached("topdom", 120, lambda: _top_blocked(n))
 
@@ -1119,8 +1148,24 @@ def _top_clients(n):
 def query_counts_24h(domain_filter="", client_filter=""):
     domain_filter = re.sub(r"[^a-zA-Z0-9._:-]", "", domain_filter or "")[:100]
     client_filter = re.sub(r"[^a-zA-Z0-9._:-]", "", client_filter or "")[:100]
+    if not domain_filter and not client_filter:
+        # Unfiltered totals come straight from FTL; the 1 GB on-disk scan is
+        # only worth it when a domain/client filter is applied.
+        counts = cached("query_counts_24h:api", 15, _query_counts_24h_api)
+        if counts:
+            return counts
     key = f"query_counts_24h:{domain_filter.lower()}:{client_filter.lower()}"
     return cached(key, 60, lambda: _query_counts_24h(domain_filter, client_filter))
+
+def _query_counts_24h_api():
+    try:
+        q = (_ph_get("/stats/summary") or {}).get("queries", {})
+        total, blocked = int(q.get("total", 0) or 0), int(q.get("blocked", 0) or 0)
+        if total:
+            return {"blocked": blocked, "allowed": max(0, total - blocked)}
+    except (TypeError, ValueError):
+        pass
+    return None
 
 def _query_counts_24h(domain_filter="", client_filter=""):
     # Count every matching DNS query in the last 24 hours, not just the five
@@ -1359,15 +1404,13 @@ HTML = '''
 <!DOCTYPE html>
 <html lang="ar" dir="ltr">
 <head>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{version}}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&family=Geist+Mono:wght@500;600&display=swap");
 
         /* Aurora theme: soft pink/blue/mint mesh behind translucent white cards,
            one violet accent for the hero and primary actions, pastel chips for
@@ -2546,6 +2589,7 @@ HTML = '''
 
         /* --- health meters --- */
         .health-label { color: var(--au-mute); font-weight: 700; letter-spacing: 0.06em; }
+        .health-sub { font-size: 12px; font-weight: 600; color: var(--au-mute); margin: -10px 0 12px; font-variant-numeric: tabular-nums; }
         .health-value, .health-value[style] { color: var(--au-ink) !important; }
         .health-bar { height: 10px; background: var(--au-tint); border: none; border-radius: 99px; }
         .health-fill { border-radius: 99px; border: none; }
@@ -3253,103 +3297,59 @@ HTML = '''
             </div>
         </section>
 
-        <!-- Resources Health -->
+        <!-- Resources Health (live, refreshed with /api/quick-status) -->
         <section class="section">
-            <div class="section-header">
-                <div class="section-icon green">
-                    <svg viewBox="0 0 24 24" fill="#10b981">
-                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
-                    </svg>
-                </div>
-                <h2 class="section-title">Resources Health</h2>
-            </div>
-
-            <div class="health-grid" id="res_grid">
-                <div class="health-card" style="--bar-color: var(--primary);">
-                    <div class="health-label">CPU Usage</div>
-                    <div class="health-value">{{cpu}}%</div>
-                    <div class="health-bar">
-                        <div class="health-fill cpu" style="width: {{cpu}}%;"></div>
-                    </div>
-                </div>
-
-                <div class="health-card" style="--bar-color: var(--warning);">
-                    <div class="health-label">RAM Usage</div>
-                    <div class="health-value">{{ram}}%</div>
-                    <div class="health-bar">
-                        <div class="health-fill ram" style="width: {{ram}}%;"></div>
-                    </div>
-                </div>
-
-                <div class="health-card" style="--bar-color: var(--danger);">
-                    <div class="health-label">Disk Space</div>
-                    <div class="health-value">{{disk}}%</div>
-                    <div class="health-bar">
-                        <div class="health-fill disk" style="width: {{disk}}%;"></div>
-                    </div>
-                </div>
-
-                <div class="health-card" style="--bar-color: var(--success);">
-                    <div class="health-label">Temperature</div>
-                    <div class="health-value">{{temp}}°C</div>
-                    <div class="health-bar">
-                        <div class="health-fill temp" style="width: {{ (temp/80)*100 }}%;"></div>
-                    </div>
-                </div>
-
-                <div class="health-card" style="--bar-color: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};">
-                    <div class="health-label">Power & Battery</div>
-                    <div class="health-value" style="font-size: 24px;">{{bat.status}}</div>
-                    <div class="health-bar">
-                        <div class="health-fill" style="width: {{bat.percent}}%; background: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};"></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-
-
-        <!-- v7.5 Live System Performance Monitor -->
-        <section class="section" style="border:1px solid rgba(79,140,255,0.3); background:linear-gradient(135deg, rgba(15,23,42,0.8), rgba(3,7,18,0.95)); box-shadow:0 0 40px rgba(79,140,255,0.07);">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="section-icon blue" style="background:rgba(79,140,255,0.15); color:var(--primary-light); box-shadow:0 0 15px rgba(79,140,255,0.3);">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    <div class="section-icon green">
+                        <svg viewBox="0 0 24 24" fill="#10b981">
+                            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
                         </svg>
                     </div>
-                    <h2 class="section-title" style="margin:0; color:var(--primary-light);">Live System Performance Monitor (مراقب أداء النظام الحي)</h2>
+                    <h2 class="section-title" style="margin:0;">Resources Health (صحة الموارد)</h2>
                 </div>
-                <span style="font-size:11px; color:var(--success); background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Live Auto-Updating</span>
+                <span style="font-size:11px; color:var(--success); background:rgba(52,211,153,0.1); padding:4px 10px; border-radius:99px; border:1px solid rgba(52,211,153,0.2);">● Live · every 10 s</span>
             </div>
 
-            <div class="health-grid" style="margin-top:16px;">
+            <div class="health-grid" id="res_grid" style="margin-top:16px;">
                 <div class="health-card" style="--bar-color: var(--primary);">
                     <div class="health-label">CPU Usage (المعالج)</div>
                     <div class="health-value" id="perf_cpu">{{ cpu }}%</div>
+                    <div class="health-sub" id="sub_cpu">load {{ sysd.load }} · {{ sysd.cores }} cores</div>
                     <div class="health-bar">
-                        <div class="health-fill" id="bar_cpu" style="width: {{ cpu }}%;"></div>
-                    </div>
-                </div>
-                <div class="health-card" style="--bar-color: var(--success);">
-                    <div class="health-label">RAM Usage (الذاكرة العشوائية)</div>
-                    <div class="health-value" id="perf_ram">{{ ram }}%</div>
-                    <div class="health-bar">
-                        <div class="health-fill" id="bar_ram" style="width: {{ ram }}%;"></div>
+                        <div class="health-fill cpu" id="bar_cpu" style="width: {{ cpu }}%;"></div>
                     </div>
                 </div>
                 <div class="health-card" style="--bar-color: var(--warning);">
-                    <div class="health-label">Disk Usage (مساحة التخزين)</div>
-                    <div class="health-value" id="perf_disk">{{ disk }}%</div>
+                    <div class="health-label">RAM Usage (الذاكرة)</div>
+                    <div class="health-value" id="perf_ram">{{ ram }}%</div>
+                    <div class="health-sub" id="sub_ram">{{ sysd.ram_used_gb }} / {{ sysd.ram_total_gb }} GB used</div>
                     <div class="health-bar">
-                        <div class="health-fill" id="bar_disk" style="width: {{ disk }}%;"></div>
+                        <div class="health-fill ram" id="bar_ram" style="width: {{ ram }}%;"></div>
                     </div>
                 </div>
                 <div class="health-card" style="--bar-color: var(--danger);">
-                    <div class="health-label">Core Temperature (درجة الحرارة)</div>
-                    <div class="health-value" id="perf_temp">{{ temp }}°C</div>
+                    <div class="health-label">Disk Space (التخزين)</div>
+                    <div class="health-value" id="perf_disk">{{ disk }}%</div>
+                    <div class="health-sub" id="sub_disk">{{ sysd.disk_used_gb }} / {{ sysd.disk_total_gb }} GB · {{ sysd.disk_free_gb }} GB free</div>
                     <div class="health-bar">
-                        <div class="health-fill temp" id="bar_temp" style="width: {{ temp }}%;"></div>
+                        <div class="health-fill disk" id="bar_disk" style="width: {{ disk }}%;"></div>
+                    </div>
+                </div>
+                <div class="health-card" style="--bar-color: var(--success);">
+                    <div class="health-label">Core Temperature (الحرارة)</div>
+                    <div class="health-value" id="perf_temp">{{ temp }}°C</div>
+                    <div class="health-sub" id="sub_temp">{{ 'Normal' if temp < 70 else 'Hot' }} · limit 80°C</div>
+                    <div class="health-bar">
+                        <div class="health-fill temp" id="bar_temp" style="width: {{ (temp/80)*100 }}%;"></div>
+                    </div>
+                </div>
+                <div class="health-card" style="--bar-color: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};">
+                    <div class="health-label">Power & Battery (الطاقة)</div>
+                    <div class="health-value" id="perf_bat" style="font-size: 24px;">{{ bat.status }}</div>
+                    <div class="health-sub" id="sub_bat">{% if bat.has_battery %}{{ bat.percent }}% · {{ 'charging' if bat.charging else 'on battery' }}{% else %}No battery · mains power{% endif %}</div>
+                    <div class="health-bar">
+                        <div class="health-fill" id="bar_bat" style="width: {{ bat.percent }}%; background: {{ 'var(--success)' if bat.charging else ('var(--warning)' if bat.percent > 20 else 'var(--danger)') }};"></div>
                     </div>
                 </div>
             </div>
@@ -3860,36 +3860,6 @@ HTML = '''
             </div>
         </section>
 
-        <!-- Adult Site Attempts -->
-        <section class="section">
-            <div class="section-header">
-                <div class="section-icon" style="background:rgba(239,68,68,0.15);">
-                    <svg viewBox="0 0 24 24" fill="#ef4444">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
-                    </svg>
-                </div>
-                <h2 class="section-title">Adult Site Attempts (24h)</h2>
-            </div>
-
-            <div class="games-card" id="adult_list">
-                {% if adult %}
-                <div class="games-list">
-                    {% for a in adult %}
-                    <div class="game-item">
-                        <div style="display:flex;flex-direction:column;gap:3px;overflow:hidden;">
-                            <span class="game-domain" style="color:var(--danger);max-width:100%;">{{a.domain}}</span>
-                            <span style="font-size:11px;color:var(--text-muted);">{{a.client}} • {{a.time}}</span>
-                        </div>
-                        <span class="game-count">{{a.count}}x</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div style="text-align:center;padding:18px;color:var(--success);font-weight:700;">✓ No adult-site attempts in the last 24 hours</div>
-                {% endif %}
-            </div>
-        </section>
-
         <!-- Internet outage history -->
         <section class="section" id="internet_outages_section" style="margin-top:24px;">
             <div class="section-header">
@@ -4164,8 +4134,19 @@ HTML = '''
                 const live = document.getElementById('outage_live_status');
                 if(live){ live.textContent = d.internet ? 'متصل' : 'غير متصل'; live.className = 'status-badge ' + (d.internet ? 'on' : 'off'); }
                 setMetric('perf_cpu', d.cpu, '%'); setMetric('perf_ram', d.ram, '%'); setMetric('perf_disk', d.disk, '%'); setMetric('perf_temp', d.temp, '°C');
-                for(const pair of [['bar_cpu',d.cpu],['bar_ram',d.ram],['bar_disk',d.disk],['bar_temp',d.temp]]){
+                for(const pair of [['bar_cpu',d.cpu],['bar_ram',d.ram],['bar_disk',d.disk],['bar_temp',(Number(d.temp)||0)/80*100]]){
                     const bar = document.getElementById(pair[0]); if(bar) bar.style.width = Math.max(0, Math.min(100, Number(pair[1]) || 0)) + '%';
+                }
+                const sd = d.details || {};
+                if(sd.load !== undefined) setMetric('sub_cpu', 'load ' + sd.load + ' · ' + sd.cores + ' cores');
+                if(sd.ram_used_gb !== undefined) setMetric('sub_ram', sd.ram_used_gb + ' / ' + sd.ram_total_gb + ' GB used');
+                if(sd.disk_used_gb !== undefined) setMetric('sub_disk', sd.disk_used_gb + ' / ' + sd.disk_total_gb + ' GB · ' + sd.disk_free_gb + ' GB free');
+                if(d.temp !== undefined) setMetric('sub_temp', (Number(d.temp) < 70 ? 'Normal' : 'Hot') + ' · limit 80°C');
+                const bt = d.battery || {};
+                if(bt.status){
+                    setMetric('perf_bat', bt.status);
+                    setMetric('sub_bat', bt.has_battery ? (bt.percent + '% · ' + (bt.charging ? 'charging' : 'on battery')) : 'No battery · mains power');
+                    const bb = document.getElementById('bar_bat'); if(bb) bb.style.width = Math.max(0, Math.min(100, Number(bt.percent) || 0)) + '%';
                 }
                 const services = d.services || {};
                 for(const key of ['yt','ph','vpn','bot','jelly','fb','ts']){
@@ -4254,7 +4235,6 @@ HTML = '''
         }
         setInterval(pollNet, 1500); pollNet();
     </script>
-    <script>lucide.createIcons();</script>
 
     <!-- Loading Progress Overlay -->
     <div id="loadingOverlay" style="display:none; position:fixed; inset:0; background:rgba(6,10,19,0.9); backdrop-filter:blur(16px); z-index:99999; align-items:center; justify-content:center; flex-direction:column; padding:24px;">
@@ -4386,7 +4366,6 @@ GROUPS_HTML = '''
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="refresh" content="10">
     <title>Groups</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
         :root { --ink: #1b1f2a; --mute: #6b7280; --violet: #6d5dfc; --line: rgba(27,31,42,0.08); --mint: #d9f7e6; --rose: #fde2e2; }
@@ -4466,7 +4445,6 @@ LOGIN = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Login - Home Server</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
         :root { --ink: #1b1f2a; --mute: #6b7280; --violet: #6d5dfc; --violet-2: #9b7bff; --line: rgba(27,31,42,0.08); }
@@ -4578,7 +4556,7 @@ def dashboard():
         "phstats": (pihole_stats, ()),
         "topdom": (top_blocked, ()),
         "topcli": (top_clients, ()),
-        "adult": (adult_attempts, ()),
+        "sysd": (system_details, ()),
         "yt": (youtube_status, ()),
         "bot": (svc, ("tg-control.timer",)),
         "jelly": (svc, ("jellyfin",)),
@@ -4627,7 +4605,7 @@ def dashboard():
         queries=queries, query_domain=query_domain, query_client=query_client,
         query_summary=values["summary"], query_return=query_return,
         phstats=values["phstats"], topdom=values["topdom"], topcli=values["topcli"],
-        adult=values["adult"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
+        sysd=values["sysd"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
         fb=values["fb"], tailscale=values["tailscale"], uptime=values["uptime"],
         cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
         reboot=values["reboot"], rollback_ver=values["rollback_ver"], upd=values["upd"], phupd=values["phupd"], groups=values["groups"], spd=values["spd"],
@@ -4687,6 +4665,7 @@ def quick_status_api():
         "disk": cached("quick_disk", 5, disk),
         "temp": cached("quick_temp", 3, temp),
         "battery": cached("quick_battery", 5, battery),
+        "details": cached("quick_details", 5, system_details),
         "speedtest": cached("quick_speedtest", 2, speedtest),
         "services": services,
         "outages": internet_outage_rows(),
@@ -5304,4 +5283,5 @@ def action(name):
 
 if __name__ == "__main__":
     threading.Thread(target=traffic_sampler, name="traffic-sampler", daemon=True).start()
+    threading.Thread(target=cpu_sampler, name="cpu-sampler", daemon=True).start()
     app.run(host="0.0.0.0", port=8088, threaded=True)
