@@ -50,7 +50,7 @@ def _bearer_token_valid():
         return True
     except (BadSignature, SignatureExpired, ValueError):
         return False
-VERSION = "v12.3"
+VERSION = "v12.4"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 DEPLOY_REPO_ALIASES = {DEFAULT_REPO_URL, "git@github.com:sars87/dashboard-v3.git"}
@@ -698,7 +698,7 @@ def youtube_lan_devices():
     found = {}
     raw = sh("ip neigh show 2>/dev/null")
     for line in raw.splitlines():
-        match = re.match(r"^((?:\d{1,3}\.){3}\d{1,3})\\s+dev\\s+(\\S+)(?:\\s+lladdr\\s+(\\S+))?\\s+(\\S+)", line.strip())
+        match = re.match(r"^((?:\d{1,3}\.){3}\d{1,3})\s+dev\s+(\S+)(?:\s+lladdr\s+(\S+))?\s+(\S+)", line.strip())
         if match and match.group(4) not in {"FAILED", "INCOMPLETE"}:
             ip, iface, mac, state = match.groups()
             found[ip] = {"ip": ip, "mac": mac or "", "iface": iface, "state": state}
@@ -1190,8 +1190,54 @@ def query_counts_24h(domain_filter="", client_filter=""):
         counts = cached("query_counts_24h:api", 15, _query_counts_24h_api)
         if counts:
             return counts
+    else:
+        counts = _query_counts_filtered_api(domain_filter, client_filter)
+        if counts:
+            return counts
     key = f"query_counts_24h:{domain_filter.lower()}:{client_filter.lower()}"
     return cached(key, 60, lambda: _query_counts_24h(domain_filter, client_filter))
+
+# FTL answers filtered searches from memory in well under a second; the same
+# search on the 1 GB on-disk database takes seconds and can hit the SQL timeout.
+_FTL_BLOCKED_PREFIXES = ("GRAVITY", "REGEX", "DENYLIST", "EXTERNAL_BLOCKED", "SPECIAL_DOMAIN")
+
+def _ftl_query_params(domain_filter, client_filter, **extra):
+    params = {"from": int(time.time()) - 86400}
+    if domain_filter:
+        params["domain"] = f"*{domain_filter}*"
+    if client_filter:
+        params["client_ip"] = f"*{client_filter}*"
+    params.update(extra)
+    return urlencode(params)
+
+def _query_counts_filtered_api(domain_filter, client_filter):
+    try:
+        total = _ph_get("/queries?" + _ftl_query_params(domain_filter, client_filter, length=1))
+        blocked = _ph_get("/queries?" + _ftl_query_params(domain_filter, client_filter, length=1, upstream="blocklist"))
+        if total is None or blocked is None:
+            return None
+        n_total, n_blocked = int(total["recordsFiltered"]), int(blocked["recordsFiltered"])
+        return {"blocked": n_blocked, "allowed": max(0, n_total - n_blocked)}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+def _recent_queries_api(domain_filter, client_filter, n):
+    j = _ph_get("/queries?" + _ftl_query_params(domain_filter, client_filter, length=int(n)))
+    if not isinstance(j, dict) or not isinstance(j.get("queries"), list):
+        return None
+    rows = []
+    for q in j["queries"]:
+        try:
+            client = q.get("client") or {}
+            rows.append({
+                "time": datetime.fromtimestamp(float(q["time"])).strftime("%Y-%m-%d %H:%M:%S"),
+                "domain": str(q.get("domain", "")),
+                "client": str(client.get("ip") or client.get("name") or ""),
+                "status": "Blocked" if str(q.get("status", "")).startswith(_FTL_BLOCKED_PREFIXES) else "Allowed",
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    return rows
 
 def _query_counts_24h_api():
     try:
@@ -1230,6 +1276,10 @@ def recent_queries(domain_filter="", client_filter="", n=5):
     client_filter = re.sub(r"[^a-zA-Z0-9._:-]", "", client_filter or "")[:100]
     if not domain_filter and not client_filter:
         return [], domain_filter, client_filter
+    n = max(1, min(int(n), 100))
+    live = _recent_queries_api(domain_filter, client_filter, n)
+    if live is not None:
+        return live, domain_filter, client_filter
     clauses = ["q.timestamp >= strftime('%s','now','-1 day')"]
     if domain_filter:
         clauses.append("lower(q.domain) LIKE '%" + domain_filter.lower() + "%'")
@@ -1366,6 +1416,8 @@ def pihole_update_status():
     for key, name in (("CORE", "Core"), ("WEB", "Web"), ("FTL", "FTL")):
         current = versions.get(f"{key}_VERSION", "")
         latest = versions.get(f"GITHUB_{key}_VERSION", "")
+        if latest.lower() in ("null", "none", "n/a"):
+            latest = ""
         if current and latest and current != latest:
             outdated.append(name)
             details.append(f"{name} {current} → {latest}")
@@ -5187,8 +5239,14 @@ def update_domain_list(action, domain):
     # supplied to the Pi-hole CLI, even though this command does not use a shell.
     if action in {"allow", "block"} and re.fullmatch(r"[a-z0-9.-]{1,253}", domain):
         command = "allow" if action == "allow" else "deny"
+        opposite = "deny" if action == "allow" else "allow"
         try:
-            return subprocess.run(["sudo", "pihole", command, domain], check=False, timeout=20).returncode == 0
+            # Drop it from the other list first; on both lists the result is
+            # ambiguous. Removing a domain that is not listed is harmless.
+            subprocess.run(["sudo", "pihole", opposite, "-d", domain], check=False,
+                           capture_output=True, timeout=20)
+            return subprocess.run(["sudo", "pihole", command, domain], check=False,
+                                  capture_output=True, timeout=20).returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             pass
     return False
@@ -5438,7 +5496,11 @@ def api_net():
 
 @app.route("/api/v1/queries")
 def api_queries():
-    queries, domain, client = recent_queries(request.args.get("domain", ""), request.args.get("client", ""))
+    try:
+        limit = int(request.args.get("limit", 25))
+    except ValueError:
+        limit = 25
+    queries, domain, client = recent_queries(request.args.get("domain", ""), request.args.get("client", ""), limit)
     return jsonify({"ok": True, "queries": queries, "domain": domain, "client": client,
                     "summary": query_counts_24h(domain, client)})
 
