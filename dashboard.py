@@ -50,7 +50,7 @@ def _bearer_token_valid():
         return True
     except (BadSignature, SignatureExpired, ValueError):
         return False
-VERSION = "v12.2"
+VERSION = "v12.3"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 DEPLOY_REPO_ALIASES = {DEFAULT_REPO_URL, "git@github.com:sars87/dashboard-v3.git"}
@@ -631,12 +631,26 @@ def internet():
         return False
 
 def pihole():
-    x = sh("pihole status").lower()
-    if "enabled" in x:
+    """Live blocking state. FTL's API is authoritative and instant; the CLI is
+    only a fallback and must run as root: without it `pihole status` cannot
+    read pihole.toml and always claims blocking is enabled."""
+    state = str((_ph_get("/dns/blocking") or {}).get("blocking", "")).lower()
+    if state == "enabled":
         return "Enabled"
-    if "disabled" in x:
+    if state == "disabled":
         return "Disabled"
+    x = sh("sudo -n pihole status").lower()
+    if "blocking is disabled" in x:
+        return "Disabled"
+    if "blocking is enabled" in x:
+        return "Enabled"
     return "Unknown"
+
+def drop_status_cache():
+    """Forget the short-lived quick-status values after an action, so the next
+    poll shows the new state instead of a value cached just before it."""
+    for key in [k for k in _CACHE if k.startswith("quick_")]:
+        _CACHE.pop(key, None)
 
 def pihole_pause_state():
     """Return the timed-disable state, removing it once it has expired."""
@@ -4752,6 +4766,7 @@ def youtube_save_api():
         if install_result.returncode != 0:
             return jsonify({"ok": False, "error": install_result.stderr[-500:] or "Cannot install policy file"}), 500
         result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "apply"], capture_output=True, text=True, timeout=40, check=False)
+        drop_status_cache()
         state = json.loads(result.stdout.strip() or "{}")
         return jsonify({"ok": result.returncode == 0, "state": state, "error": result.stderr[-500:] if result.returncode else ""})
     except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
@@ -4764,6 +4779,7 @@ def youtube_toggle_api():
     payload = request.get_json(silent=True) or {}
     try:
         result = subprocess.run(["sudo", "python3", YOUTUBE_POLICY_BIN, "apply", "--force", "on" if payload.get("enabled") else "off"], capture_output=True, text=True, timeout=40, check=False)
+        drop_status_cache()
         return jsonify({"ok": result.returncode == 0, "state": json.loads(result.stdout.strip() or "{}"), "error": result.stderr[-500:]})
     except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -4991,6 +5007,7 @@ def _control_service(sname, action):
         try:
             result = subprocess.run(["sudo", "systemctl", action, sname],
                                     check=False, capture_output=True, text=True, timeout=20)
+            drop_status_cache()
             return result.returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             pass
@@ -5160,6 +5177,7 @@ def _pihole_pause(minutes):
         if result.returncode == 0:
             with open(PIHOLE_PAUSE_STATE, "w") as f:
                 json.dump({"ends_at": int(time.time()) + minutes * 60}, f)
+            drop_status_cache()
             return True
     return False
 
@@ -5356,6 +5374,7 @@ def action(name):
                     subprocess.run(argv, check=False, timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             pass
+        drop_status_cache()
     if name not in action_sequences and wants_json:
         return jsonify({"status": "error", "action": name, "error": "unknown action"}), 404
     if wants_json:
