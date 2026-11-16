@@ -4,6 +4,7 @@ import os, subprocess, socket, re, json, urllib.request, time, shutil, threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode, quote
 from datetime import datetime, timezone
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 app = Flask(__name__)
 
@@ -28,7 +29,28 @@ app.config.update(
     MAX_CONTENT_LENGTH=64 * 1024,
 )
 PIHOLE_API = "http://127.0.0.1/api"
-VERSION = "v12.1"
+
+# Bearer tokens for the native mobile app. Signed with the dashboard secret,
+# so a stored token is only as sensitive as the session cookie. Rotating
+# DASHBOARD_SECRET_KEY invalidates every issued token.
+API_TOKEN_MAX_AGE = 90 * 86400
+
+def _api_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt="dashboard-api-token")
+
+def issue_api_token():
+    return _api_serializer().dumps({"app": "mobile", "iat": int(time.time())})
+
+def _bearer_token_valid():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    try:
+        _api_serializer().loads(auth[7:].strip(), max_age=API_TOKEN_MAX_AGE)
+        return True
+    except (BadSignature, SignatureExpired, ValueError):
+        return False
+VERSION = "v12.2"
 GITHUB_REPO_FILE = "/home/saif/.dashboard_repo_url"
 DEFAULT_REPO_URL = "https://github.com/sars87/dashboard-v3.git"
 DEPLOY_REPO_ALIASES = {DEFAULT_REPO_URL, "git@github.com:sars87/dashboard-v3.git"}
@@ -999,7 +1021,7 @@ def write_crontab(user, content):
         return False
 
 def logged():
-    return "ok" in session
+    return "ok" in session or _bearer_token_valid()
 
 def pihole_groups():
     try:
@@ -4542,10 +4564,38 @@ def dashboard():
     if not logged():
         return redirect("/")
 
-    # Build independent dashboard cards concurrently. This prevents several
-    # short local/network timeouts from accumulating during the first load.
     domain = request.args.get("domain", "")
     client = request.args.get("client", "")
+    values = _dashboard_values(domain, client)
+    queries, query_domain, query_client = values["recent"]
+    query_return = "/dashboard?" + urlencode({"domain": query_domain, "client": query_client})
+    return render_template_string(
+        HTML,
+        version=VERSION,
+        net=values["net"], vpn=values["vpn"], ph=values["ph"], pause=values["pause"],
+        queries=queries, query_domain=query_domain, query_client=query_client,
+        query_summary=values["summary"], query_return=query_return,
+        phstats=values["phstats"], topdom=values["topdom"], topcli=values["topcli"],
+        sysd=values["sysd"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
+        fb=values["fb"], tailscale=values["tailscale"], uptime=values["uptime"],
+        cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
+        reboot=values["reboot"], rollback_ver=values["rollback_ver"], upd=values["upd"], phupd=values["phupd"], groups=values["groups"], spd=values["spd"],
+        spdhist=values["spdhist"], bat=values["bat"], docker=values["docker"],
+        cronjobs=values["cronjobs"], secure_notes=get_secure_notes(),
+        fw_status=values["fw_status"], ssh_failures=values["ssh_failures"],
+        arp_devices=values["arp_devices"], net_conns=values["net_conns"], top_procs=values["top_procs"],
+        kernel_info=values["kernel_info"], open_ports=values["open_ports"],
+        sys_services=values["sys_services"], tailscale_details=values["tailscale_details"],
+        tailscale_nodes=values["tailscale_nodes"], tailscale_traffic=values["tailscale_traffic"],
+        repo_url=values["repo_url"], net_quota=values["net_quota"], outages=values["outages"]
+    )
+
+
+def _dashboard_values(domain="", client=""):
+    """Every card of the dashboard, computed concurrently. Shared by the HTML
+    page and the mobile app's /api/v1/overview."""
+    # Build independent dashboard cards concurrently. This prevents several
+    # short local/network timeouts from accumulating during the first load.
     jobs = {
         "recent": (recent_queries, (domain, client)),
         "net": (internet, ()),
@@ -4594,30 +4644,7 @@ def dashboard():
     }
     with ThreadPoolExecutor(max_workers=16) as executor:
         futures = {key: executor.submit(fn, *args) for key, (fn, args) in jobs.items()}
-        values = {key: future.result() for key, future in futures.items()}
-
-    queries, query_domain, query_client = values["recent"]
-    query_return = "/dashboard?" + urlencode({"domain": query_domain, "client": query_client})
-    return render_template_string(
-        HTML,
-        version=VERSION,
-        net=values["net"], vpn=values["vpn"], ph=values["ph"], pause=values["pause"],
-        queries=queries, query_domain=query_domain, query_client=query_client,
-        query_summary=values["summary"], query_return=query_return,
-        phstats=values["phstats"], topdom=values["topdom"], topcli=values["topcli"],
-        sysd=values["sysd"], yt=values["yt"], bot=values["bot"], jelly=values["jelly"],
-        fb=values["fb"], tailscale=values["tailscale"], uptime=values["uptime"],
-        cpu=values["cpu"], ram=values["ram"], disk=values["disk"], temp=values["temp"],
-        reboot=values["reboot"], rollback_ver=values["rollback_ver"], upd=values["upd"], phupd=values["phupd"], groups=values["groups"], spd=values["spd"],
-        spdhist=values["spdhist"], bat=values["bat"], docker=values["docker"],
-        cronjobs=values["cronjobs"], secure_notes=get_secure_notes(),
-        fw_status=values["fw_status"], ssh_failures=values["ssh_failures"],
-        arp_devices=values["arp_devices"], net_conns=values["net_conns"], top_procs=values["top_procs"],
-        kernel_info=values["kernel_info"], open_ports=values["open_ports"],
-        sys_services=values["sys_services"], tailscale_details=values["tailscale_details"],
-        tailscale_nodes=values["tailscale_nodes"], tailscale_traffic=values["tailscale_traffic"],
-        repo_url=values["repo_url"], net_quota=values["net_quota"], outages=values["outages"]
-    )
+        return {key: future.result() for key, future in futures.items()}
 
 
 @app.route("/api/internet-outages")
@@ -4639,6 +4666,10 @@ def quick_status_api():
     """Small local-only refresh payload; avoid rendering the full dashboard."""
     if not logged():
         return jsonify({"ok": False, "error": "Not logged in"}), 401
+    return jsonify(_quick_status_payload())
+
+
+def _quick_status_payload():
     service_units = {
         "yt": None,
         "ph": None,
@@ -4656,7 +4687,7 @@ def quick_status_api():
             services[key] = cached("quick_ph", 10, pihole)
         else:
             services[key] = cached("quick_svc_" + key, 10, lambda unit=unit: svc(unit))
-    return jsonify({
+    return {
         "ok": True,
         "internet": internet(),
         "uptime": cached("quick_uptime", 3, uptime),
@@ -4669,7 +4700,7 @@ def quick_status_api():
         "speedtest": cached("quick_speedtest", 2, speedtest),
         "services": services,
         "outages": internet_outage_rows(),
-    })
+    }
 
 
 @app.route("/api/youtube-state")
@@ -4905,30 +4936,43 @@ def groups():
 def add_note():
     if not logged():
         return redirect("/")
-    title = request.form.get("title", "").strip()
-    content = request.form.get("content", "").strip()
-    if title and content:
-        notes = get_secure_notes()
-        new_id = str(int(time.time()))
-        notes.append({"id": new_id, "title": title, "content": content})
-        save_secure_notes(notes)
+    _add_note(request.form.get("title", ""), request.form.get("content", ""))
     return redirect("/dashboard")
+
+def _add_note(title, content):
+    title = (title or "").strip()[:200]
+    content = (content or "").strip()[:4000]
+    if not (title and content):
+        return False
+    notes = get_secure_notes()
+    new_id = str(int(time.time()))
+    notes.append({"id": new_id, "title": title, "content": content})
+    save_secure_notes(notes)
+    return True
 
 @app.route("/action/notes/delete/<nid>")
 def delete_note(nid):
     if not logged():
         return redirect("/")
-    notes = get_secure_notes()
-    notes = [n for n in notes if n["id"] != nid]
-    save_secure_notes(notes)
+    _delete_note(nid)
     return redirect("/dashboard")
+
+def _delete_note(nid):
+    notes = get_secure_notes()
+    kept = [n for n in notes if n["id"] != nid]
+    save_secure_notes(kept)
+    return len(kept) != len(notes)
 
 @app.route("/action/cleanup_cache")
 def cleanup_cache():
     if not logged():
         return redirect("/")
-    sh("sudo apt-get clean && sudo rm -rf /tmp/*")
+    _cleanup_cache()
     return redirect("/dashboard")
+
+def _cleanup_cache():
+    sh("sudo apt-get clean && sudo rm -rf /tmp/*")
+    return True
 
 SERVICE_ALLOWLIST = {
     "openvpn-client@proton.service", "tg-control.timer", "jellyfin",
@@ -4939,13 +4983,18 @@ SERVICE_ALLOWLIST = {
 def control_service(sname, action):
     if not logged():
         return redirect("/")
+    _control_service(sname, action)
+    return redirect("/dashboard")
+
+def _control_service(sname, action):
     if sname in SERVICE_ALLOWLIST and action in {"start", "stop", "restart"}:
         try:
-            subprocess.run(["sudo", "systemctl", action, sname],
-                           check=False, capture_output=True, text=True, timeout=20)
+            result = subprocess.run(["sudo", "systemctl", action, sname],
+                                    check=False, capture_output=True, text=True, timeout=20)
+            return result.returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             pass
-    return redirect("/dashboard")
+    return False
 
 @app.route("/action/terminal", methods=["POST"])
 def web_terminal():
@@ -4994,9 +5043,16 @@ def web_deploy():
     # Deployment source is fixed to the trusted repository; never interpolate a
     # browser-supplied URL into a shell command. The SSH spelling of the same
     # repository is accepted too, but pulls always use public HTTPS.
-    repo_url = request.form.get("repo_url", "").strip() or get_repo_url()
+    result = _web_deploy(request.form.get("repo_url", ""))
+    return redirect("/dashboard?" + urlencode(result))
+
+
+def _web_deploy(repo_url=""):
+    """Pull main, verify, install and schedule a restart. Returns the status
+    dict shown by the web page banner and the mobile app."""
+    repo_url = (repo_url or "").strip() or get_repo_url()
     if repo_url not in DEPLOY_REPO_ALIASES:
-        return redirect("/dashboard?deploy=rejected")
+        return {"deploy": "rejected"}
     set_repo_url(DEFAULT_REPO_URL)
 
     target_dir = os.path.expanduser("~/deployments/dashboard-v3")
@@ -5026,8 +5082,8 @@ def web_deploy():
             shutil.copy2(source_path, destination_path)
         schedule_dashboard_restart()
     except (OSError, SyntaxError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return redirect("/dashboard?" + urlencode({"deploy": "failed", "step": step}))
-    return redirect("/dashboard?" + urlencode({"deploy": "ok", "version": _file_version(source_path)}))
+        return {"deploy": "failed", "step": step}
+    return {"deploy": "ok", "version": _file_version(source_path)}
 
 
 def _same_file(a, b):
@@ -5089,10 +5145,14 @@ def queries_search():
 def pihole_pause():
     if not logged():
         return redirect("/")
+    _pihole_pause(request.form.get("minutes", ""))
+    return redirect("/dashboard")
+
+def _pihole_pause(minutes):
     try:
-        minutes = int(request.form.get("minutes", ""))
+        minutes = int(minutes)
     except (TypeError, ValueError):
-        return redirect("/dashboard")
+        return False
     # Pi-hole accepts duration strings such as "30m" and schedules its own
     # automatic re-enable, so the timer survives a dashboard restart.
     if 1 <= minutes <= 1440:
@@ -5100,7 +5160,8 @@ def pihole_pause():
         if result.returncode == 0:
             with open(PIHOLE_PAUSE_STATE, "w") as f:
                 json.dump({"ends_at": int(time.time()) + minutes * 60}, f)
-    return redirect("/dashboard")
+            return True
+    return False
 
 def update_domain_list(action, domain):
     domain = (domain or "").strip().lower()
@@ -5138,6 +5199,10 @@ def logout():
 def cron_toggle(user, line_idx):
     if not logged():
         return redirect("/")
+    _cron_toggle(user, line_idx)
+    return redirect("/dashboard")
+
+def _cron_toggle(user, line_idx):
     if user in ["saif", "root"]:
         try:
             raw = read_crontab(user)
@@ -5149,22 +5214,24 @@ def cron_toggle(user, line_idx):
                 else:
                     lines[line_idx] = "# " + line
                 new_crontab = "\n".join(lines) + "\n"
-                write_crontab(user, new_crontab)
+                return write_crontab(user, new_crontab)
         except:
             pass
-    return redirect("/dashboard")
+    return False
 
 @app.route("/action/cron_edit", methods=["POST"])
 def cron_edit():
     if not logged():
         return redirect("/")
-    user = request.form.get("user")
+    _cron_edit(request.form.get("user"), request.form.get("line_idx", -1), request.form.get("schedule", ""))
+    return redirect("/dashboard")
+
+def _cron_edit(user, line_idx, new_sched):
     try:
-        line_idx = int(request.form.get("line_idx", -1))
-    except:
+        line_idx = int(line_idx)
+    except (TypeError, ValueError):
         line_idx = -1
-    new_sched = request.form.get("schedule", "").strip()
-    
+    new_sched = (new_sched or "").strip()
     if (user in ["saif", "root"] and line_idx >= 0 and
             re.fullmatch(r"[0-9*/,-]+(?:\s+[0-9*/,-]+){4}", new_sched)):
         try:
@@ -5174,39 +5241,45 @@ def cron_edit():
                 line = lines[line_idx].strip()
                 is_disabled = line.startswith("#")
                 clean_line = line.lstrip("#").strip()
-                
+
                 parts = clean_line.split(None, 5)
                 if len(parts) >= 6:
                     cmd = parts[5]
                 else:
                     cmd = clean_line
-                
+
                 updated_line = f"{new_sched} {cmd}"
                 if is_disabled:
                     updated_line = "# " + updated_line
-                
+
                 lines[line_idx] = updated_line
                 new_crontab = "\n".join(lines) + "\n"
-                write_crontab(user, new_crontab)
+                return write_crontab(user, new_crontab)
         except:
             pass
-    return redirect("/dashboard")
+    return False
 
 @app.route("/action/docker/<action>/<container_id>")
 def docker_action(action, container_id):
     if not logged():
         return redirect("/")
-    if action in {"start", "stop", "restart"} and re.fullmatch(r"[a-f0-9]{12,64}", container_id):
+    _docker_action(action, container_id)
+    return redirect("/dashboard")
+
+def _docker_action(action, container_id):
+    if action in {"start", "stop", "restart"} and re.fullmatch(r"[a-f0-9]{12,64}", container_id or ""):
         try:
-            subprocess.run(["sudo", "docker", action, container_id], check=False, timeout=30)
+            result = subprocess.run(["sudo", "docker", action, container_id], check=False, timeout=30)
+            return result.returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             pass
-    return redirect("/dashboard")
+    return False
 
 @app.route("/action/<path:name>", methods=["GET", "POST"])
 def action(name):
     if not logged():
         return redirect("/")
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST"
     if name == "pihole_on":
         clear_pihole_pause_state()
     if name == "rollback":
@@ -5218,6 +5291,8 @@ def action(name):
                 schedule_dashboard_restart()
             except (OSError, SyntaxError):
                 pass
+        if wants_json:
+            return jsonify({"status": "success", "action": name})
         return redirect("/dashboard")
     if name in ("update_system", "pihole_update"):
         ok = start_os_update() if name == "update_system" else start_pihole_update()
@@ -5227,6 +5302,8 @@ def action(name):
     if name.startswith(("group_on/", "group_off/")):
         group_action, gid_text = name.split("/", 1)
         if not re.fullmatch(r"[1-9][0-9]*", gid_text):
+            if wants_json:
+                return jsonify({"status": "error", "action": name}), 400
             return redirect("/dashboard")
         gid = int(gid_text)
         enabled = 1 if group_action == "group_on" else 0
@@ -5238,6 +5315,8 @@ def action(name):
                            check=False, capture_output=True, text=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             pass
+        if wants_json:
+            return jsonify({"status": "success", "action": name})
         return redirect("/dashboard")
 
     action_sequences = {
@@ -5277,9 +5356,176 @@ def action(name):
                     subprocess.run(argv, check=False, timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             pass
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.method == "POST":
+    if name not in action_sequences and wants_json:
+        return jsonify({"status": "error", "action": name, "error": "unknown action"}), 404
+    if wants_json:
         return json.dumps({"status": "success", "action": name}), 200, {"Content-Type": "application/json"}
     return redirect("/dashboard")
+
+
+# ==================================================
+# JSON API v1 for the native mobile app
+# Every endpoint reuses the same functions as the web pages. Auth is the
+# session cookie or a Bearer token from /api/v1/login.
+# ==================================================
+@app.before_request
+def _api_v1_guard():
+    if request.path.startswith("/api/v1/") and request.path != "/api/v1/login" and not logged():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+def _api_json():
+    return request.get_json(silent=True) or {}
+
+def _api_result(ok, **extra):
+    payload = {"ok": bool(ok)}
+    payload.update(extra)
+    return jsonify(payload), (200 if ok else 400)
+
+@app.route("/api/v1/login", methods=["POST"])
+def api_login():
+    password = str(_api_json().get("password", ""))
+    if password != PASSWORD:
+        time.sleep(0.8)
+        return jsonify({"ok": False, "error": "Wrong Password"}), 401
+    return jsonify({"ok": True, "token": issue_api_token(), "version": VERSION,
+                    "hostname": socket.gethostname()})
+
+@app.route("/api/v1/ping")
+def api_ping():
+    return jsonify({"ok": True, "version": VERSION, "hostname": socket.gethostname(),
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+
+@app.route("/api/v1/overview")
+def api_overview():
+    values = _dashboard_values(request.args.get("domain", ""), request.args.get("client", ""))
+    queries, domain, client = values.pop("recent")
+    values["recent"] = {"queries": queries, "domain": domain, "client": client}
+    values["notes"] = get_secure_notes()
+    values["version"] = VERSION
+    values["ok"] = True
+    return jsonify(values)
+
+@app.route("/api/v1/quick")
+def api_quick():
+    return jsonify(_quick_status_payload())
+
+@app.route("/api/v1/net")
+def api_net():
+    data = net_counters()
+    data["tailscale"] = tailscale_traffic()
+    data["quota"] = network_traffic_quota()
+    data["ok"] = True
+    return jsonify(data)
+
+@app.route("/api/v1/queries")
+def api_queries():
+    queries, domain, client = recent_queries(request.args.get("domain", ""), request.args.get("client", ""))
+    return jsonify({"ok": True, "queries": queries, "domain": domain, "client": client,
+                    "summary": query_counts_24h(domain, client)})
+
+@app.route("/api/v1/update-status")
+def api_update_status():
+    return jsonify({"ok": True, "os": update_status(), "pihole": pihole_update_status()})
+
+@app.route("/api/v1/outages")
+def api_outages():
+    return jsonify({"ok": True, "outages": internet_outage_rows()})
+
+@app.route("/api/v1/cron/logs")
+def api_cron_logs():
+    res = subprocess.run("journalctl -u cron -n 60 --no-pager 2>/dev/null || grep CRON /var/log/syslog -n 50 2>/dev/null || echo 'Cron system journal logs unavailable.'", shell=True, capture_output=True, text=True)
+    return jsonify({"ok": True, "logs": res.stdout.strip() or "No recent cron log entries found."})
+
+@app.route("/api/v1/traffic/report")
+def api_traffic_report():
+    try:
+        history = load_traffic_history()["days"]
+        rows = []
+        for date_str in sorted(history.keys(), reverse=True):
+            d = history[date_str]
+            rx, tx = d.get("rx", 0), d.get("tx", 0)
+            rows.append({"date": date_str, "raw_rx": rx, "raw_tx": tx, "rx": fmt_bytes(rx),
+                         "tx": fmt_bytes(tx), "combined": fmt_bytes(rx + tx)})
+        return jsonify({"ok": True, "reports": rows})
+    except Exception as exc:
+        return jsonify({"ok": False, "reports": [], "error": str(exc)})
+
+@app.route("/api/v1/electricity")
+def api_electricity():
+    return jsonify(electricity_analytics(request.args.get("period", "day")))
+
+@app.route("/api/v1/youtube")
+def api_youtube_state():
+    return youtube_state_api()
+
+@app.route("/api/v1/youtube/save", methods=["POST"])
+def api_youtube_save():
+    return youtube_save_api()
+
+@app.route("/api/v1/youtube/toggle", methods=["POST"])
+def api_youtube_toggle():
+    return youtube_toggle_api()
+
+@app.route("/api/v1/action/<path:name>", methods=["POST"])
+def api_action(name):
+    return action(name)
+
+@app.route("/api/v1/service/<sname>/<act>", methods=["POST"])
+def api_service(sname, act):
+    return _api_result(_control_service(sname, act), service=sname, action=act, state=svc(sname))
+
+@app.route("/api/v1/docker/<act>/<container_id>", methods=["POST"])
+def api_docker(act, container_id):
+    return _api_result(_docker_action(act, container_id), containers=docker_containers())
+
+@app.route("/api/v1/pihole/pause", methods=["POST"])
+def api_pihole_pause():
+    ok = _pihole_pause(_api_json().get("minutes"))
+    return _api_result(ok, pause=pihole_pause_state(), status=pihole())
+
+@app.route("/api/v1/domain/<act>", methods=["POST"])
+def api_domain(act):
+    return _api_result(update_domain_list(act, str(_api_json().get("domain", ""))))
+
+@app.route("/api/v1/notes", methods=["GET"])
+def api_notes():
+    return jsonify({"ok": True, "notes": get_secure_notes()})
+
+@app.route("/api/v1/notes", methods=["POST"])
+def api_notes_add():
+    data = _api_json()
+    return _api_result(_add_note(data.get("title"), data.get("content")), notes=get_secure_notes())
+
+@app.route("/api/v1/notes/<nid>", methods=["DELETE"])
+def api_notes_delete(nid):
+    return _api_result(_delete_note(nid), notes=get_secure_notes())
+
+@app.route("/api/v1/cron", methods=["GET"])
+def api_cron_list():
+    return jsonify({"ok": True, "jobs": cron_jobs()})
+
+@app.route("/api/v1/cron/toggle/<user>/<int:line_idx>", methods=["POST"])
+def api_cron_toggle(user, line_idx):
+    return _api_result(_cron_toggle(user, line_idx), jobs=cron_jobs())
+
+@app.route("/api/v1/cron/edit", methods=["POST"])
+def api_cron_edit():
+    data = _api_json()
+    return _api_result(_cron_edit(data.get("user"), data.get("line_idx", -1), data.get("schedule", "")), jobs=cron_jobs())
+
+@app.route("/api/v1/cleanup-cache", methods=["POST"])
+def api_cleanup_cache():
+    return _api_result(_cleanup_cache())
+
+@app.route("/api/v1/deploy", methods=["POST"])
+def api_deploy():
+    result = _web_deploy(str(_api_json().get("repo_url", "")))
+    return _api_result(result.get("deploy") == "ok", **result)
+
+@app.route("/api/v1/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     threading.Thread(target=traffic_sampler, name="traffic-sampler", daemon=True).start()
